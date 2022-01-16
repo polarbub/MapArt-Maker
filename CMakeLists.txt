@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 2.8.12)
 
 # Name the project
-project(GUI)
+project(MapArtMakerGUI)
 
 #The directory of the built wxWidgets Library. It should contain a file called 'FindwxWidgets.cmake'
 #set(CMAKE_MODULE_PATH "C:/wxWidgets")

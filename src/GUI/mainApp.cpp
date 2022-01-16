@@ -1,6 +1,6 @@
 #include "mainApp.h"
 
-wxIMPLEMENT_APP(mainApp);
+wxIMPLEMENT_APP_NO_MAIN(mainApp);
 
 bool mainApp::OnInit() {
     frame = new mainFrame();

@@ -18,7 +18,7 @@ include_directories("${CMAKE_SOURCE_DIR}/src/include")
 #' src/[^\n ]*\.h'
 # Define a variable containing a list of source files for the project
 set(SRC_FILES
-        src/main.cpp src/mainApp/mainApp.cpp src/mainApp/mainFrame/mainFrame.cpp src/mainApp/mainFrame/imagePanel/imagePanel.cpp)
+        src/main.cpp src/GUI/mainApp.cpp src/GUI/mainFrame/mainFrame.cpp src/GUI/mainFrame/imagePanel/imagePanel.cpp)
 
 
 #if(WIN32)

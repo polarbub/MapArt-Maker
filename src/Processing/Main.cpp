@@ -366,10 +366,10 @@ int main(int argc, char** argv) {
 	if (!Settings) {
 		Settings.open("Settings.txt", std::fstream::app);
 		Settings
-			<< "//Hello User, this is the settings file, wherein you can change the main settings for the mapart program" << std::endl
+			<< "//Hello User, this is the settings file, wherein you can change the main settings for the MapArt Maker" << std::endl
 			<< "//If you make changes to the file, be aware that if a line begins with \"//\", it will be ignored:" << std::endl
 			<< "//The top section is the blocks that will be used for the given color ID. For info on what blocks go with what color IDs, visit this page:" << std::endl
-			<< "//minecraft.fandom.com/wiki/Map_item_format#Color_table" << std::endl << std::endl
+			<< "//https://minecraft.fandom.com/wiki/Map_item_format#Color_table" << std::endl << std::endl
 			<< "01: minecraft:slime_block" << std::endl << "02: minecraft:birch_slab" << std::endl << "03: minecraft:mushroom_stem[down=true, east=true, north=true, south=true, up=true, west=true]" << std::endl
 			<< "04: minecraft:redstone_block" << std::endl << "05: minecraft:ice" << std::endl << "06: minecraft:iron_trapdoor" << std::endl
 			<< "07: minecraft:oak_leaves[persistent=true]" << std::endl << "08: minecraft:white_carpet" << std::endl << "09: minecraft:clay" << std::endl
@@ -407,7 +407,7 @@ int main(int argc, char** argv) {
 
 	if (argc == 1) {
 		std::cout
-			<< "Usage: HunsMapArt_1.0.exe input_image [output] [options]" << std::endl
+			<< "Usage: " << argv[0] << " input_image [output] [options]" << std::endl
 			<< "     [output] can either be an image, .nbt, or .litematica output" << std::endl
 			<< "     if not provided, default is output.png in same folder as input_image" << std::endl << std::endl
 			<< "Options:" << std::endl

@@ -1,0 +1,10 @@
+edit.txt
+.cache
+.idea
+.vscode
+build
+.vs
+compile_commands.json
+cmake-build-debug
+Debug
+Release

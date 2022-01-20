@@ -78,8 +78,14 @@ int width, height, channels;
 
 bool noDither = false;
 bool constMaxHeight = false;
-//ADD: Make this an enum for readability
-int Mode = 0;
+enum mode{
+    flat,       //0
+    staircase,  //1
+    ascending,  //2
+    descending, //3
+    unlimited   //4
+};
+mode Mode = flat;
 int minR = 0;
 int minG = 0;
 int minB = 0;
@@ -132,3 +138,4 @@ int maxB = 255;
 			<< "		     FLAT, STAIRCASE, ASCENDING, DESCENDING, UNLIMITED" << std::endl\
 			<< "		     default is FLAT" << std::endl\
 			<< "		     UNLIMITED gives access to 4th shade but never outputs a .nbt file"
+

@@ -286,7 +286,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::cout << "LOADED IMAGE" << std::endl;
-
+        //ADD: ARGs before image
         for (int i = 2; i < argc; i++) {
             //ADD: --help
             std::string arg = argv[i];
@@ -298,21 +298,28 @@ int main(int argc, char** argv) {
                     std::cout << "ERROR: Mode must be given after --mode";
                     return 1;
                 }
-                //ADD: Change to full arg matching
-                arg = argv[i + 1];
-                if (std::toupper(arg.at(0)) == 'S') {
-                    Mode = 1;
+                //TEST: Change to full arg matching
+                arg = std::string(argv[i + 1]);
+                std::for_each(arg.begin(), arg.end(), [](char & c){
+                    c = ::tolower(c);
+                });
+
+                if (arg == "flat") {
+                    Mode = flat;
                 }
-                else if (std::toupper(arg.at(0)) == 'A') {
-                    Mode = 2;
+                else if (arg == "staircase") {
+                    Mode = staircase;
                 }
-                else if (std::toupper(arg.at(0)) == 'D') {
-                    Mode = 3;
+                else if (arg == "ascending") {
+                    Mode = ascending;
                 }
-                else if (std::toupper(arg.at(0)) == 'U') {
-                    Mode = 4;
+                else if (arg == "descending") {
+                    Mode = descending;
                 }
-                else if (std::toupper(arg.at(0)) != 'F') {
+                else if (arg == "unlimited") {
+                    Mode = unlimited;
+                }
+                else {
                     std::cout << "ERROR: Invalid mode option";
                     std::cout << "HERE-> " << arg << std::endl;
                     return 1;
@@ -357,25 +364,26 @@ int main(int argc, char** argv) {
                         std::cout << "HERE-> " << line << std::endl;
                         return 1;
                     }
+                    //TEST: Does removing block types work?
                     BlockTypes[blockID] = line.substr(line.find("minecraft:") + 10);
                     switch (Mode) {
-                        case 0:
+                        case flat:
                             AllowedColors[blockID * 4 + 1] = true;
                             break;
-                        case 1:
+                        case staircase:
                             AllowedColors[blockID * 4 + 0] = true;
                             AllowedColors[blockID * 4 + 1] = true;
                             AllowedColors[blockID * 4 + 2] = true;
                             break;
-                        case 2:
+                        case ascending:
                             AllowedColors[blockID * 4 + 1] = true;
                             AllowedColors[blockID * 4 + 2] = true;
                             break;
-                        case 3:
+                        case descending:
                             AllowedColors[blockID * 4 + 0] = true;
                             AllowedColors[blockID * 4 + 1] = true;
                             break;
-                        case 4:
+                        case unlimited:
                             AllowedColors[blockID * 4 + 0] = true;
                             AllowedColors[blockID * 4 + 1] = true;
                             AllowedColors[blockID * 4 + 2] = true;
@@ -476,13 +484,13 @@ int main(int argc, char** argv) {
         ToLab(BlockColors[i], &Colors[i]);
     }
 
-	const int HEIGHT = height;
-	const int WIDTH = width;
-	size_t sizeIn = WIDTH * HEIGHT * channels;
-	size_t sizeOut = WIDTH * HEIGHT * 3;
-	unsigned char* imageOut = new unsigned char[sizeOut];
+    const int HEIGHT = height;
+    const int WIDTH = width;
+    size_t sizeIn = WIDTH * HEIGHT * channels;
+    size_t sizeOut = WIDTH * HEIGHT * 3;
+    unsigned char* imageOut = new unsigned char[sizeOut];
 
-
+    //ADD: ClI Options for this
 	std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
 		/*Floyd-Steinberg*/
 		{{16},		//Divisor
@@ -679,7 +687,7 @@ int main(int argc, char** argv) {
 		}
 
 		//Check for and apply height-limit fixes when necessary based on what shade of block color was chosen (staircasing)
-		if (Mode != 4) {
+		if (Mode != unlimited) {
 			switch (colorIndex & 3) {
 			case DOWN: //Staircasing downwards
 				if (prev_heights[width_pos] < 1) {

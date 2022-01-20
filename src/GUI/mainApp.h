@@ -2,7 +2,6 @@
 #include "includes.h"
 #include "mainFrame/mainFrame.h"
 
-
 class mainApp : public wxApp {
 
     mainFrame *frame;

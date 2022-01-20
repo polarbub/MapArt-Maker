@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 2.8.12)
 project(MapArtMakerCLI)
 include_directories("${CMAKE_SOURCE_DIR}")
 
+#set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 #Remove header from SRC_FILES regex:
 #' src/[^\n ]*\.h'
 # Define a variable containing a list of source files for the project

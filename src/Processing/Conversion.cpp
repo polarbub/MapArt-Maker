@@ -379,5 +379,61 @@ namespace ColorSpace {
 		Xyz xyz((x+y)/1.02, y, -(z-y)/0.847);
 		XyzConverter::ToColor(color, &xyz);
 	}
+
+    void ToLab(ColorSpace::Rgb rgb, ColorSpace::Lab* lab) {
+        float f7, f8, f9, f16 = 0.008856452F;
+        float f17 = 903.2963F;
+        float f18 = 0.964221F;
+        float f19 = 1.0F;
+        float f20 = 0.825211F;
+        float f1 = rgb.r / 255.0;
+        float f2 = rgb.g / 255.0;
+        float f3 = rgb.b / 255.0;
+
+        if (f1 <= 0.04045)
+            f1 /= 12.0F;
+        else
+            f1 = (float)pow((f1 + 0.055) / 1.055, 2.4);
+
+        if (f2 <= 0.04045)
+            f2 /= 12.0;
+        else
+            f2 = (float)pow((f2 + 0.055) / 1.055, 2.4);
+
+        if (f3 <= 0.04045)
+            f3 /= 12.0;
+        else
+            f3 = (float)pow((f3 + 0.055) / 1.055, 2.4);
+
+        float f4 = 0.43605202F * f1 + 0.3850816F * f2 + 0.14308742F * f3;
+        float f5 = 0.22249159F * f1 + 0.71688604F * f2 + 0.060621485F * f3;
+        float f6 = 0.013929122F * f1 + 0.097097F * f2 + 0.7141855F * f3;
+        float f10 = f4 / f18;
+        float f11 = f5 / f19;
+        float f12 = f6 / f20;
+
+        if (f10 > f16)
+            f7 = (float)pow(f10, 0.3333333333333333);
+        else
+            f7 = (float)(((f17 * f10) + 16.0) / 116.0);
+
+        if (f11 > f16)
+            f8 = (float)pow(f11, 0.3333333333333333);
+        else
+            f8 = (float)(((f17 * f11) + 16.0) / 116.0);
+
+        if (f12 > f16)
+            f9 = (float)pow(f12, 0.3333333333333333);
+        else
+            f9 = (float)(((f17 * f12) + 16.0) / 116.0);
+
+        float f13 = 116.0F * f8 - 16.0F;
+        float f14 = 500.0F * (f7 - f8);
+        float f15 = 200.0F * (f8 - f9);
+
+        lab->l = (int)(2.55 * f13 + 0.5);
+        lab->a = (int)(f14 + 0.5);
+        lab->b = (int)(f15 + 0.5);
+    }
 }
 

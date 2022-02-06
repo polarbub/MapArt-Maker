@@ -165,5 +165,103 @@ namespace ColorSpace {
 
 		return sqrt(SQR(deltaL / (defaultLightness*sl)) + SQR(deltaC / (defaultChroma*sc)) + SQR(deltaH / sh));
 	}
+
+    double Compare76(const ColorSpace::Lab* Color1, const ColorSpace::Lab* Color2) {
+        double L = Color1->l - Color2->l;
+        double A = Color1->a - Color2->a;
+        double B = Color1->b - Color2->b;
+        return L * L + A * A + B * B;
+    }
+
+    double Compare00(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b) {
+        const double eps = 1e-5;
+
+        double c1 = sqrt(SQR(lab_a->a) + SQR(lab_a->b));
+        double c2 = sqrt(SQR(lab_b->a) + SQR(lab_b->b));
+        double meanC = (c1 + c2) / 2.0;
+        double meanC7 = POW7(meanC);
+
+        double g = 0.5 * (1 - sqrt(meanC7 / (meanC7 + 6103515625.))); // 0.5*(1-sqrt(meanC^7/(meanC^7+25^7)))
+        double a1p = lab_a->a * (1 + g);
+        double a2p = lab_b->a * (1 + g);
+
+        c1 = sqrt(SQR(a1p) + SQR(lab_a->b));
+        c2 = sqrt(SQR(a2p) + SQR(lab_b->b));
+        double h1 = fmod(atan2(lab_a->b, a1p) + 2 * M_PI, 2 * M_PI);
+        double h2 = fmod(atan2(lab_b->b, a2p) + 2 * M_PI, 2 * M_PI);
+
+        // compute deltaL, deltaC, deltaH
+        double deltaL = lab_b->l - lab_a->l;
+        double deltaC = c2 - c1;
+        double deltah;
+
+        if (c1 * c2 < eps) {
+            deltah = 0;
+        }
+        if (std::abs(h2 - h1) <= M_PI) {
+            deltah = h2 - h1;
+        }
+        else if (h2 > h1) {
+            deltah = h2 - h1 - 2 * M_PI;
+        }
+        else {
+            deltah = h2 - h1 + 2 * M_PI;
+        }
+
+        double deltaH = 2 * sqrt(c1 * c2) * sin(deltah / 2);
+
+        // calculate CIEDE2000
+        double meanL = (lab_a->l + lab_b->l) / 2;
+        meanC = (c1 + c2) / 2.0;
+        meanC7 = POW7(meanC);
+        double meanH;
+
+        if (c1 * c2 < eps) {
+            meanH = h1 + h2;
+        }
+        if (std::abs(h1 - h2) <= M_PI + eps) {
+            meanH = (h1 + h2) / 2;
+        }
+        else if (h1 + h2 < 2 * M_PI) {
+            meanH = (h1 + h2 + 2 * M_PI) / 2;
+        }
+        else {
+            meanH = (h1 + h2 - 2 * M_PI) / 2;
+        }
+
+        double T = 1
+                   - 0.17 * cos(meanH - DegToRad(30))
+                   + 0.24 * cos(2 * meanH)
+                   + 0.32 * cos(3 * meanH + DegToRad(6))
+                   - 0.2 * cos(4 * meanH - DegToRad(63));
+        double sl = 1 + (0.015 * SQR(meanL - 50)) / sqrt(20 + SQR(meanL - 50));
+        double sc = 1 + 0.045 * meanC;
+        double sh = 1 + 0.015 * meanC * T;
+        double rc = 2 * sqrt(meanC7 / (meanC7 + 6103515625.));
+        double rt = -sin(DegToRad(60 * exp(-SQR((RadToDeg(meanH) - 275) / 25)))) * rc;
+
+        return SQR(deltaL / sl) + SQR(deltaC / sc) + SQR(deltaH / sh) + rt * deltaC / sc * deltaH / sh;
+    }
+
+    double Compare94(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b) {
+        double deltaL = lab_a->l - lab_b->l;
+        double deltaA = lab_a->a - lab_b->a;
+        double deltaB = lab_a->b - lab_b->b;
+
+        double c1 = sqrt(SQR(lab_a->a) + SQR(lab_a->b));
+        double c2 = sqrt(SQR(lab_b->a) + SQR(lab_b->b));
+        double deltaC = c1 - c2;
+
+        double deltaH = SQR(deltaA) + SQR(deltaB) - SQR(deltaC);
+
+        double sl = 1.0;
+        double sc = 1.0 + 0.045 * c1;
+        double sh = 1.0 + 0.015 * c1;
+
+        deltaL /= sl;
+        deltaC /= sc;
+
+        return SQR(deltaL) + SQR(deltaC) + deltaH / SQR(sh);
+    }
 }
 

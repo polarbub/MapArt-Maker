@@ -11,7 +11,7 @@ set(CMAKE_BUILD_TYPE Debug)
 #' src/[^\n ]*\.h'
 # Define a variable containing a list of source files for the project
 set(SRC_FILES
-        Main.cpp Conversion.cpp ColorSpace.cpp Comparison.cpp miniz.c)
+        Main.cpp Conversion.cpp ColorSpace.cpp Comparison.cpp miniz.c nbt/nbtDriver.cpp)
 
 # Define the build target for the executable
 add_executable(${PROJECT_NAME}

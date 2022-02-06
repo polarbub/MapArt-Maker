@@ -107,6 +107,8 @@ namespace ColorSpace {
 		static void ToColor(Rgb *color, HunterLab *item);
 	};
 	typedef IConverter<HunterLab> HunterLabConverter;
+
+    void ToLab(ColorSpace::Rgb rgb, ColorSpace::Lab* lab);
 }
 
 #endif // RGB_CONVERTER_H

@@ -3,7 +3,8 @@
 #define NBT_IMPLEMENTATION
 #include "stb_image.h"
 #include "stb_image_write.h"
-#include "nbt.h"
+//#include "nbt/nbt.h"
+#include "nbt/nbtDriver.h"
 
 #include "Comparison.h"
 #include "Utils.h"
@@ -11,7 +12,6 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <sstream>
 #include <vector>
 #include <bitset>
 #include <math.h>
@@ -25,257 +25,20 @@
 #include <bitset>
 #include <stdio.h>
 #include <time.h>
-
 #include <iomanip>
-
-void ToLab(ColorSpace::Rgb rgb, ColorSpace::Lab* lab) {
-	float f7, f8, f9, f16 = 0.008856452F;
-	float f17 = 903.2963F;
-	float f18 = 0.964221F;
-	float f19 = 1.0F;
-	float f20 = 0.825211F;
-	float f1 = rgb.r / 255.0;
-	float f2 = rgb.g / 255.0;
-	float f3 = rgb.b / 255.0;
-
-	if (f1 <= 0.04045)
-		f1 /= 12.0F;
-	else
-		f1 = (float)pow((f1 + 0.055) / 1.055, 2.4);
-	
-	if (f2 <= 0.04045)
-		f2 /= 12.0;
-	else
-		f2 = (float)pow((f2 + 0.055) / 1.055, 2.4);
-
-	if (f3 <= 0.04045)
-		f3 /= 12.0;
-	else
-		f3 = (float)pow((f3 + 0.055) / 1.055, 2.4);
-
-	float f4 = 0.43605202F * f1 + 0.3850816F * f2 + 0.14308742F * f3;
-	float f5 = 0.22249159F * f1 + 0.71688604F * f2 + 0.060621485F * f3;
-	float f6 = 0.013929122F * f1 + 0.097097F * f2 + 0.7141855F * f3;
-	float f10 = f4 / f18;
-	float f11 = f5 / f19;
-	float f12 = f6 / f20;
-
-	if (f10 > f16)
-		f7 = (float)pow(f10, 0.3333333333333333);
-	else
-		f7 = (float)(((f17 * f10) + 16.0) / 116.0);
-
-	if (f11 > f16)
-		f8 = (float)pow(f11, 0.3333333333333333);
-	else
-		f8 = (float)(((f17 * f11) + 16.0) / 116.0);
-
-	if (f12 > f16)
-		f9 = (float)pow(f12, 0.3333333333333333);
-	else
-		f9 = (float)(((f17 * f12) + 16.0) / 116.0);
-
-	float f13 = 116.0F * f8 - 16.0F;
-	float f14 = 500.0F * (f7 - f8);
-	float f15 = 200.0F * (f8 - f9);
-
-	lab->l = (int)(2.55 * f13 + 0.5);
-	lab->a = (int)(f14 + 0.5);
-	lab->b = (int)(f15 + 0.5);
-}
-
-static size_t writer_write(void* userdata, uint8_t* data, size_t size) {
-	return fwrite(data, 1, size, static_cast<FILE*>(userdata));
-}
-
-void write_nbt_file(const char* name, nbt_tag_t* tag, int flags) {
-	FILE* file = fopen(name, "wb");
-	nbt_writer_t writer;
-
-	writer.write = writer_write;
-	writer.userdata = file;
-
-	nbt_write(writer, tag, flags);
-	fclose(file);
-}
-
-void SetTagName(nbt_tag_t* tag, const std::string name) {
-	nbt_set_tag_name(tag, name.c_str(), name.size());
-}
-
-nbt_tag_t* CreateCompoundTag(std::string name, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_compound();
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-nbt_tag_t* CreateListTag(std::string name, nbt_tag_type_t type, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_list(type);
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-nbt_tag_t* CreateIntTag(std::string name, int val, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_int(val);
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-nbt_tag_t* CreateLongTag(std::string name, int64_t val, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_long(val);
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-nbt_tag_t* CreateStringTag(std::string name, std::string val, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_string(val.c_str(), val.size());
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-nbt_tag_t* CreateLongArrayTag(std::string name, int64_t vals[], int length, nbt_tag_t* append = NULL) {
-	nbt_tag_t* tag = nbt_new_tag_long_array(vals, length);
-	SetTagName(tag, name);
-	if (append != NULL) {
-		nbt_tag_compound_append(append, tag);
-		return NULL;
-	}
-	return tag;
-}
-
-void CloseTag(nbt_tag_t* tag, nbt_tag_t* append, bool toCompound = true) {
-	if (toCompound)
-		nbt_tag_compound_append(append, tag);
-	else
-		nbt_tag_list_append(append, tag);
-}
-
-double Compare76(const ColorSpace::Lab* Color1, const ColorSpace::Lab* Color2) {
-	double L = Color1->l - Color2->l;
-	double A = Color1->a - Color2->a;
-	double B = Color1->b - Color2->b;
-	return L * L + A * A + B * B;
-}
-
-double Compare00(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b) {
-	const double eps = 1e-5;
-
-	double c1 = sqrt(SQR(lab_a->a) + SQR(lab_a->b));
-	double c2 = sqrt(SQR(lab_b->a) + SQR(lab_b->b));
-	double meanC = (c1 + c2) / 2.0;
-	double meanC7 = POW7(meanC);
-
-	double g = 0.5 * (1 - sqrt(meanC7 / (meanC7 + 6103515625.))); // 0.5*(1-sqrt(meanC^7/(meanC^7+25^7)))
-	double a1p = lab_a->a * (1 + g);
-	double a2p = lab_b->a * (1 + g);
-
-	c1 = sqrt(SQR(a1p) + SQR(lab_a->b));
-	c2 = sqrt(SQR(a2p) + SQR(lab_b->b));
-	double h1 = fmod(atan2(lab_a->b, a1p) + 2 * M_PI, 2 * M_PI);
-	double h2 = fmod(atan2(lab_b->b, a2p) + 2 * M_PI, 2 * M_PI);
-
-	// compute deltaL, deltaC, deltaH
-	double deltaL = lab_b->l - lab_a->l;
-	double deltaC = c2 - c1;
-	double deltah;
-
-	if (c1 * c2 < eps) {
-		deltah = 0;
-	}
-	if (std::abs(h2 - h1) <= M_PI) {
-		deltah = h2 - h1;
-	}
-	else if (h2 > h1) {
-		deltah = h2 - h1 - 2 * M_PI;
-	}
-	else {
-		deltah = h2 - h1 + 2 * M_PI;
-	}
-
-	double deltaH = 2 * sqrt(c1 * c2) * sin(deltah / 2);
-
-	// calculate CIEDE2000
-	double meanL = (lab_a->l + lab_b->l) / 2;
-	meanC = (c1 + c2) / 2.0;
-	meanC7 = POW7(meanC);
-	double meanH;
-
-	if (c1 * c2 < eps) {
-		meanH = h1 + h2;
-	}
-	if (std::abs(h1 - h2) <= M_PI + eps) {
-		meanH = (h1 + h2) / 2;
-	}
-	else if (h1 + h2 < 2 * M_PI) {
-		meanH = (h1 + h2 + 2 * M_PI) / 2;
-	}
-	else {
-		meanH = (h1 + h2 - 2 * M_PI) / 2;
-	}
-
-	double T = 1
-		- 0.17 * cos(meanH - DegToRad(30))
-		+ 0.24 * cos(2 * meanH)
-		+ 0.32 * cos(3 * meanH + DegToRad(6))
-		- 0.2 * cos(4 * meanH - DegToRad(63));
-	double sl = 1 + (0.015 * SQR(meanL - 50)) / sqrt(20 + SQR(meanL - 50));
-	double sc = 1 + 0.045 * meanC;
-	double sh = 1 + 0.015 * meanC * T;
-	double rc = 2 * sqrt(meanC7 / (meanC7 + 6103515625.));
-	double rt = -sin(DegToRad(60 * exp(-SQR((RadToDeg(meanH) - 275) / 25)))) * rc;
-
-	return SQR(deltaL / sl) + SQR(deltaC / sc) + SQR(deltaH / sh) + rt * deltaC / sc * deltaH / sh;
-}
-
-double Compare94(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b) {
-	double deltaL = lab_a->l - lab_b->l;
-	double deltaA = lab_a->a - lab_b->a;
-	double deltaB = lab_a->b - lab_b->b;
-
-	double c1 = sqrt(SQR(lab_a->a) + SQR(lab_a->b));
-	double c2 = sqrt(SQR(lab_b->a) + SQR(lab_b->b));
-	double deltaC = c1 - c2;
-
-	double deltaH = SQR(deltaA) + SQR(deltaB) - SQR(deltaC);
-
-	double sl = 1.0;
-	double sc = 1.0 + 0.045 * c1;
-	double sh = 1.0 + 0.015 * c1;
-
-	deltaL /= sl;
-	deltaC /= sc;
-
-	return SQR(deltaL) + SQR(deltaC) + deltaH / SQR(sh);
-}
-
 #include "mainConsts.h"
+
+//Moved ToLab to 'Conversion' namespace
+//All the nbt related helper functions have been moved to /nbt/nbtDriver
+//Comparisons here have been moved to the 'comparison' namespace.
+
+
 
 int main(int argc, char** argv) {
 
     /*Argument Parsing*/ {
         if (argc == 1) {
-            std::cout
-                    << help_Text << std::endl;
+            std::cout << help_Text << std::endl;
             return 0;
         }
 
@@ -288,9 +51,12 @@ int main(int argc, char** argv) {
         std::cout << "LOADED IMAGE" << std::endl;
         //ADD: ARGs before image
         for (int i = 2; i < argc; i++) {
-            //ADD: --help
             std::string arg = argv[i];
-            if (arg == "--nodither") {
+            //ADD: --help
+            if (arg == "--help") {
+                std::cout << help_Text << std::endl;
+                return 0;
+            } else if (arg == "--nodither") {
                 noDither = true;
             }
             else if (arg == "--mode") {
@@ -479,9 +245,11 @@ int main(int argc, char** argv) {
         std::cout << "FINISHED PARSING SETTINGS!" << std::endl;
     }
 
+    /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
+
     ColorSpace::Lab Colors[TOTAL_COLORS * 4];
     for (int i = 0; i < TOTAL_COLORS * 4; i++) {
-        ToLab(BlockColors[i], &Colors[i]);
+        ColorSpace::ToLab(BlockColors[i], &Colors[i]);
     }
 
     const int HEIGHT = height;
@@ -490,7 +258,6 @@ int main(int argc, char** argv) {
     size_t sizeOut = WIDTH * HEIGHT * 3;
     unsigned char* imageOut = new unsigned char[sizeOut];
 
-    //ADD: ClI Options for this
 	std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
 		/*Floyd-Steinberg*/
 		{{16},		//Divisor
@@ -525,6 +292,7 @@ int main(int argc, char** argv) {
 		{(double)WIDTH + 2, 2, 2}}
 	};
 
+    //ADD: ClI Options for this
 	int DitherChosen = 0;
 	short Divisor = DitheringAlgorithms.at(DitherChosen).at(0).at(0);
 	int DitherSize = DitheringAlgorithms.at(DitherChosen).size();
@@ -627,7 +395,7 @@ int main(int argc, char** argv) {
 		double minError;
 		//Convert the RGB values to the LAB color space
 		ColorSpace::Lab colorLAB;
-		ToLab({ (double)r, (double)g, (double)b }, &colorLAB);
+        ColorSpace::ToLab({ (double)r, (double)g, (double)b }, &colorLAB);
 
 		//If a match is not found
 		if (!foundMatch) {
@@ -822,6 +590,7 @@ int main(int argc, char** argv) {
 	std::cout << "Upwards Fixes = " << upFixes << std::endl;
 	std::cout << "Downwards Fixes = " << downFixes << std::endl << std::endl;
 	std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl << std::endl;
+    //ADD: Switch this to specified output image
 	std::string out = "FSNoOverflow.png";
 	stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
 
@@ -830,7 +599,7 @@ int main(int argc, char** argv) {
 	//return 0;
 
 
-	/*********************************************************DATA PROCESSING****************************************************************/
+	/*********************************************************MAKING IT MC FRIENDLY****************************************************************/
 
 	short*** Height_Indeces = new short** [NBT_X];
 	for (int i = 0; i < NBT_X; i++) {

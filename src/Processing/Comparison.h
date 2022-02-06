@@ -12,6 +12,10 @@ namespace ColorSpace {
 		static double Compare(IColorSpace *a, IColorSpace *b);
 	};
 
+    double Compare76(const ColorSpace::Lab* Color1, const ColorSpace::Lab* Color2);
+    double Compare00(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b);
+    double Compare94(const ColorSpace::Lab* lab_a, const ColorSpace::Lab* lab_b);
+
 
 	struct Cie94Comparison {
 		enum APPLICATION {

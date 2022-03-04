@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(MapArtMaker)
 
 option(BUILD_GUI "Enable building the GUI" ON)
-option(BUILD_PROCESSING "Enable building the Processing part" ON)
+option(BUILD_PROCESSING "Enable building the Processing part" OFF)
 
 if(BUILD_GUI)
     add_subdirectory(src/GUI)

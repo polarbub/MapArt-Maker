@@ -80,7 +80,7 @@ int width, height, channels;
 
 bool noDither = false;
 bool constMaxHeight = false;
-enum mode{
+enum stairCaseMode {
     none = 0,
     flat = 1,
     staircase = 2,
@@ -88,7 +88,7 @@ enum mode{
     descending = 4,
     unlimited = 5
 };
-mode StairCaseMode = flat;
+stairCaseMode StairCaseMode = flat;
 int minR = 0;
 int minG = 0;
 int minB = 0;
@@ -143,3 +143,6 @@ int maxB = 255;
 			<< "		     default is FLAT" << std::endl\
 			<< "		     UNLIMITED gives access to 4th shade but can't be put into Minecraft"
 
+std::string SettingsFileName = "Settings.txt";
+
+#define SettingsFile_Generic_Error "ERROR: Incorrect syntax in " << SettingsFileName << ". "

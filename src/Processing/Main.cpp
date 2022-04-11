@@ -28,7 +28,7 @@
 
 #include "psl/psl.h"
 
-#include "mainConsts.h"
+#include "GlobalVars.h"
 
 //Moved ToLab to 'Conversion' namespace
 //All the nbt related helper functions have been moved to /nbt/nbtDriver
@@ -38,7 +38,7 @@ int parseArguments(int& argc, char** argv) {
     std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
 
     if (commandLineArgs.size() == 0) {
-        //ADD: GUI!
+        //ADD: GUI
         return 0;
     }
 
@@ -107,6 +107,12 @@ int parseArguments(int& argc, char** argv) {
             //ADD: other dithering modes
             noDither = true;
 
+        //ADD: This to help text
+        } else if (arg == "--config") {
+            i++;
+            arg = commandLineArgs[i];
+            SettingsFileName = arg;
+
         } else {
             std::cout << "ERROR: Invalid argument" << std::endl;
             std::cout << "HERE-> " << arg << std::endl;
@@ -123,143 +129,295 @@ int parseArguments(int& argc, char** argv) {
     return -1;
 }
 
-int main(int argc, char** argv) {
-    psl_helperFunctionRunner(parseArguments(argc, argv));
+int parseSettings() {
+    //Open the file
+    std::fstream Settings;
+    Settings.open(SettingsFileName, std::fstream::in);
+    //Check if the file is there
+    if (!Settings) {
+        //Generate new file if not
+        Settings.open(SettingsFileName, std::fstream::app);
+        Settings << settings_Text << std::flush;
+        Settings.close();
+        Settings.open(SettingsFileName, std::fstream::in);
+    }
 
-    /*Setting.txt Parsing*/ {
-        std::fstream Settings;
-        Settings.open("Settings.txt", std::fstream::in);
-        if (!Settings) {
-            Settings.open("Settings.txt", std::fstream::app);
-            Settings << settings_Text << std::flush;
-            Settings.close();
-            Settings.open("Settings.txt", std::fstream::in);
-        }
-
-        std::string line;
-        while (std::getline(Settings, line)) {
-            if (line.size() >= 2 && !(line.at(0) == '/' && line.at(1) == '/')) {
-                if (isdigit(line.at(0)) && isdigit(line.at(1))) {
-                    int blockID = std::stoi(line.substr(0, 2)) - 1;
-                    if (line.find("minecraft:") == std::string::npos) {
-                        std::cout << "ERROR: Incorrect syntax in Settings.txt. Block given is invalid" << std::endl;
+    //Parse file.
+    std::string line;
+    while (std::getline(Settings, line)) {
+        if (line.size() >= 2 && !(line.at(0) == '/' && line.at(1) == '/')) {
+            if (isdigit(line.at(0)) && isdigit(line.at(1))) {
+                int blockID = std::stoi(line.substr(0, 2)) - 1;
+                if (line.find("minecraft:") == std::string::npos) {
+                    std::cout << "ERROR: Incorrect syntax in Settings.txt. Block given is invalid" << std::endl;
+                    std::cout << "HERE-> " << line << std::endl;
+                    return 1;
+                }
+                //TEST: Does removing block types work?
+                BlockTypes[blockID] = line.substr(line.find("minecraft:") + 10);
+                switch (StairCaseMode) {
+                    case flat:
+                        AllowedColors[blockID * 4 + 1] = true;
+                        break;
+                    case staircase:
+                        AllowedColors[blockID * 4 + 0] = true;
+                        AllowedColors[blockID * 4 + 1] = true;
+                        AllowedColors[blockID * 4 + 2] = true;
+                        break;
+                    case ascending:
+                        AllowedColors[blockID * 4 + 1] = true;
+                        AllowedColors[blockID * 4 + 2] = true;
+                        break;
+                    case descending:
+                        AllowedColors[blockID * 4 + 0] = true;
+                        AllowedColors[blockID * 4 + 1] = true;
+                        break;
+                    case unlimited:
+                        AllowedColors[blockID * 4 + 0] = true;
+                        AllowedColors[blockID * 4 + 1] = true;
+                        AllowedColors[blockID * 4 + 2] = true;
+                        AllowedColors[blockID * 4 + 3] = true;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else if (line.substr(0,8) == "support:") {
+                if (line.find("minecraft:") == std::string::npos) {
+                    std::cout << SettingsFile_Generic_Error << "Block given is invalid" << std::endl;
+                    std::cout << "HERE-> " << line << std::endl;
+                    return 1;
+                }
+                BlockTypes[TOTAL_COLORS] = line.substr(line.find("minecraft:") + 10);
+            }
+            else if (line.substr(0,13) == "needsSupport:") {
+                std::stringstream s_stream(line.substr(13));
+                while (s_stream.good()) {
+                    std::string substr;
+                    std::getline(s_stream, substr, ',');
+                    if (std::stoi(substr) < 1 || std::stoi(substr) > TOTAL_COLORS) {
+                        std::cout << SettingsFile_Generic_Error << "Support ID is invalid" << std::endl;
                         std::cout << "HERE-> " << line << std::endl;
                         return 1;
                     }
-                    //TEST: Does removing block types work?
-                    BlockTypes[blockID] = line.substr(line.find("minecraft:") + 10);
-                    switch (StairCaseMode) {
-                        case flat:
-                            AllowedColors[blockID * 4 + 1] = true;
-                            break;
-                        case staircase:
-                            AllowedColors[blockID * 4 + 0] = true;
-                            AllowedColors[blockID * 4 + 1] = true;
-                            AllowedColors[blockID * 4 + 2] = true;
-                            break;
-                        case ascending:
-                            AllowedColors[blockID * 4 + 1] = true;
-                            AllowedColors[blockID * 4 + 2] = true;
-                            break;
-                        case descending:
-                            AllowedColors[blockID * 4 + 0] = true;
-                            AllowedColors[blockID * 4 + 1] = true;
-                            break;
-                        case unlimited:
-                            AllowedColors[blockID * 4 + 0] = true;
-                            AllowedColors[blockID * 4 + 1] = true;
-                            AllowedColors[blockID * 4 + 2] = true;
-                            AllowedColors[blockID * 4 + 3] = true;
-                            break;
-                        default:
-                            break;
-                    }
+                    needsSupport[std::stoi(substr) - 1] = true;
                 }
-                else if (line.substr(0,8) == "support:") {
-                    if (line.find("minecraft:") == std::string::npos) {
-                        std::cout << "ERROR: Incorrect syntax in Settings.txt. Block given is invalid" << std::endl;
-                        std::cout << "HERE-> " << line << std::endl;
-                        return 1;
-                    }
-                    BlockTypes[TOTAL_COLORS] = line.substr(line.find("minecraft:") + 10);
-                }
-                else if (line.substr(0,13) == "needsSupport:") {
-                    std::stringstream s_stream(line.substr(13));
-                    while (s_stream.good()) {
-                        std::string substr;
-                        std::getline(s_stream, substr, ',');
-                        if (std::stoi(substr) < 1 || std::stoi(substr) > TOTAL_COLORS) {
-                            std::cout << "ERROR: Support ID is invalid" << std::endl;
-                            std::cout << "HERE-> " << line << std::endl;
-                            return 1;
-                        }
-                        needsSupport[std::stoi(substr) - 1] = true;
-                    }
-                }
-                else if (line.substr(0,3) == "min") {
-                    std::stringstream s_stream(line);
-                    int num = -100000000;
-                    while (s_stream.good()) {
-                        std::string substr;
-                        s_stream >> substr;
-                        if (std::stringstream(substr) >> num) {
-                            break;
-                        }
-                    }
-                    if (num == -100000000) {
-                        std::cout << "ERROR: Invalid range" << std::endl;
-                        std::cout << "HERE-> " << line << std::endl;
-                        return 1;
-                    }
-                    if (line.at(3) == 'R') {
-                        minR = num;
-                    }
-                    else if (line.at(3) == 'G') {
-                        minG = num;
-                    }
-                    else {
-                        minB = num;
-                    }
-                }
-                else if (line.substr(0, 3) == "max") {
-                    std::stringstream s_stream(line);
-                    int num = -100000000;
-                    while (s_stream.good()) {
-                        std::string substr;
-                        s_stream >> substr;
-                        if (std::stringstream(substr) >> num) {
-                            break;
-                        }
-                    }
-                    if (num == -100000000) {
-                        std::cout << "ERROR: Invalid range" << std::endl;
-                        std::cout << "HERE-> " << line << std::endl;
-                        return 1;
-                    }
-                    if (line.at(3) == 'R') {
-                        maxR = num;
-                    }
-                    else if (line.at(3) == 'G') {
-                        maxG = num;
-                    }
-                    else {
-                        maxB = num;
-                    }
-                }
-                else if (line.substr(0, 15) == "constMaxHeight:") {
-                    std::stringstream s_stream(line.substr(15));
+            }
+            else if (line.substr(0,3) == "min") {
+                std::stringstream s_stream(line);
+                int num = -100000000;
+                while (s_stream.good()) {
                     std::string substr;
                     s_stream >> substr;
-                    if (substr == "true" || substr == "True") {
-                        constMaxHeight = true;
+                    if (std::stringstream(substr) >> num) {
+                        break;
                     }
+                }
+                if (num == -100000000) {
+                    std::cout << SettingsFile_Generic_Error << "Invalid range" << std::endl;
+                    std::cout << "HERE-> " << line << std::endl;
+                    return 1;
+                }
+                if (line.at(3) == 'R') {
+                    minR = num;
+                }
+                else if (line.at(3) == 'G') {
+                    minG = num;
+                }
+                else {
+                    minB = num;
+                }
+            }
+            else if (line.substr(0, 3) == "max") {
+                std::stringstream s_stream(line);
+                int num = -100000000;
+                while (s_stream.good()) {
+                    std::string substr;
+                    s_stream >> substr;
+                    if (std::stringstream(substr) >> num) {
+                        break;
+                    }
+                }
+                if (num == -100000000) {
+                    std::cout << SettingsFile_Generic_Error << "Invalid range" << std::endl;
+                    std::cout << "HERE-> " << line << std::endl;
+                    return 1;
+                }
+                if (line.at(3) == 'R') {
+                    maxR = num;
+                }
+                else if (line.at(3) == 'G') {
+                    maxG = num;
+                }
+                else {
+                    maxB = num;
+                }
+            }
+            else if (line.substr(0, 15) == "constMaxHeight:") {
+                std::stringstream s_stream(line.substr(15));
+                std::string substr;
+                s_stream >> substr;
+                if (substr == "true" || substr == "True") {
+                    constMaxHeight = true;
                 }
             }
         }
-        Settings.close();
-
-        std::cout << "FINISHED PARSING SETTINGS!" << std::endl;
     }
+    Settings.close();
+
+    std::cout << "FINISHED PARSING SETTINGS" << std::endl;
+    return -1;
+}
+
+int writeLitematic(std::vector<std::array<short, 3>> *Layers, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ) {
+    std::cout << "WRITING LITEMATIC" << std::endl;
+
+    char blockBits = 6;
+    const int BLOCK_ARRAY_SIZE = NBT_XZ * NBT_Y * blockBits / 64;
+
+    //ADD: make these dynamic
+    std::string Author = "Hunsinger";
+    std::string Description = "";
+    std::string NBTName = "Testing";
+
+    nbt_tag_t* tagTop = CreateCompoundTag("");
+    nbt_tag_t* tagMeta = CreateCompoundTag("Metadata");
+    nbt_tag_t* tagEncSize = CreateCompoundTag("EnclosingSize");
+    CreateIntTag("x", NBT_X, tagEncSize);
+    CreateIntTag("y", NBT_Y, tagEncSize);
+    CreateIntTag("z", NBT_Z + 1, tagEncSize);
+    CloseTag(tagEncSize, tagMeta);
+    CreateStringTag("Author", Author, tagMeta);
+    CreateStringTag("Description", Description, tagMeta);
+    CreateStringTag("Name", NBTName, tagMeta);
+    CreateIntTag("RegionCount", 1, tagMeta);
+    CreateLongTag("TimeCreated", time(0), tagMeta);
+    CreateLongTag("TimeModified", time(0), tagMeta);
+    CreateIntTag("TotalBlocks", BLOCK_ARRAY_SIZE, tagMeta);
+    CreateIntTag("TotalVolume", BLOCK_ARRAY_SIZE, tagMeta);
+    CloseTag(tagMeta, tagTop);
+    nbt_tag_t* tagRegions = CreateCompoundTag("Regions");
+    nbt_tag_t* tagMain = CreateCompoundTag(NBTName);
+    nbt_tag_t* tagPos = CreateCompoundTag("Position");
+    CreateIntTag("x", 0, tagPos);
+    CreateIntTag("y", 0, tagPos);
+    CreateIntTag("z", 0, tagPos);
+    CloseTag(tagPos, tagMain);
+    nbt_tag_t* tagSize = CreateCompoundTag("Size");
+    CreateIntTag("x", NBT_X, tagSize);
+    CreateIntTag("y", NBT_Y, tagSize);
+    CreateIntTag("z", NBT_Z + 1, tagSize);
+    CloseTag(tagSize, tagMain);
+    nbt_tag_t* tagPalette = CreateListTag("BlockStatePalette", nbt_tag_type_t::NBT_TYPE_COMPOUND);
+    nbt_tag_t* tagPalAir = CreateCompoundTag("");
+    CreateStringTag("Name", "minecraft:air", tagPalAir);
+    CloseTag(tagPalAir, tagPalette, false);
+    for (int i = 0; i < TOTAL_COLORS + 1; i++) {
+        nbt_tag_t* tagPal = CreateCompoundTag("");
+        CreateStringTag("Name", "minecraft:" + BlockTypes[i], tagPal);
+        CloseTag(tagPal, tagPalette, false);
+    }
+    CloseTag(tagPalette, tagMain);
+    CreateListTag("Entities", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
+    CreateListTag("PendingBlockTicks", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
+    CreateListTag("PendingFluidTicks", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
+    CreateListTag("TileEntities", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
+
+    int64_t* longArr = new int64_t[BLOCK_ARRAY_SIZE]();
+    int64_t* Bits = longArr;
+    *Bits = 0;
+    char bitIndex = 0;
+    char longBitIndex = 0;
+
+    int y = 0;
+    while (y != NBT_Y && Layers[y].size() == 0) {
+        y++;
+    }
+    short Prev[3] = { -1, 0, 0 };
+
+    for (y; y != NBT_Y; y++) {
+        for (std::vector<std::array<short, 3>>::iterator it = Layers[y].begin(); it != Layers[y].end(); it++) {
+            int limit = it->at(0) - Prev[0] - 1 + (it->at(1) - Prev[1]) * NBT_X + (y - Prev[2]) * NBT_XZ;
+
+            if (limit >= 32 - bitIndex) {
+                limit -= 32 - bitIndex;
+                Bits += 1 + (bitIndex < 22) + (bitIndex < 11);
+                bitIndex = 0;
+                longBitIndex = 0;
+            }
+
+            int shift = limit >> 5;
+            Bits += 3 * shift;
+            limit -= shift << 5;
+
+            if (limit > (unsigned char)(21 - bitIndex)) {
+                limit -= 22 - bitIndex;
+                Bits += 1 + (bitIndex < 11);
+                bitIndex = 22;
+                longBitIndex = 4;
+            }
+            else if (limit > (unsigned char)(10 - bitIndex)) {
+                limit -= 11 - bitIndex;
+                Bits++;
+                bitIndex = 11;
+                longBitIndex = 2;
+            }
+            bitIndex += limit;
+            longBitIndex += blockBits * limit;
+
+
+            *Bits = *Bits | ((((int64_t)it->at(2) >> 2) + 1) << longBitIndex);
+            bitIndex++;
+            longBitIndex += blockBits;
+
+            switch (bitIndex) {
+                case 11:
+                    Bits++;
+                    *Bits = ((it->at(2) >> 2) + 1) >> 4;
+                    longBitIndex = 2;
+                    break;
+                case 22:
+                    Bits++;
+                    *Bits = ((it->at(2) >> 2) + 1) >> 2;
+                    longBitIndex = 4;
+                    break;
+                case 32:
+                    Bits++;
+                    *Bits = 0;
+                    bitIndex = 0;
+                    longBitIndex = 0;
+                    break;
+                default:
+                    break;
+            }
+
+            Prev[0] = it->at(0);
+            Prev[1] = it->at(1);
+            Prev[2] = y;
+        }
+    }
+
+    CreateLongArrayTag("BlockStates", longArr, BLOCK_ARRAY_SIZE, tagMain);
+
+    delete[] longArr;
+    longArr = nullptr;
+
+    CloseTag(tagMain, tagRegions);
+    CloseTag(tagRegions, tagTop);
+    CreateIntTag("MinecraftDataVersion", 2580, tagTop);
+    CreateIntTag("Version", 5, tagTop);
+
+    //FIX: Change this file name to be dynamic
+    write_nbt_file("FoxIconTest3.litematic", tagTop, NBT_WRITE_FLAG_USE_GZIP);
+    std::cout << "DONE WRITING LITEMATIC" << std::endl;
+
+    return -1;
+}
+
+int main(int argc, char** argv) {
+    psl_helperFunctionRunner(parseArguments(argc, argv));
+
+    psl_helperFunctionRunner(parseSettings());
 
     /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
 
@@ -270,45 +428,48 @@ int main(int argc, char** argv) {
 
     const int HEIGHT = height;
     const int WIDTH = width;
-    size_t sizeIn = WIDTH * HEIGHT * channels;
-    size_t sizeOut = WIDTH * HEIGHT * 3;
+    const size_t sizeIn = WIDTH * HEIGHT * channels;
+    const size_t sizeOut = WIDTH * HEIGHT * 3;
     unsigned char* imageOut = new unsigned char[sizeOut];
 
-	std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
-		/*Floyd-Steinberg*/
-		{{16},		//Divisor
-		{1, 1, 7},	//Distributor {<total offset>, <width offset>, <multiplier>}
-		{(double)WIDTH - 1, -1, 3},
-		{(double)WIDTH, 0, 5},
-		{(double)WIDTH + 1, 1, 1}},
+    const std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
+            /*Floyd-Steinberg*/ {
+                {16},		//Divisor
+                {1, 1, 7},	//Distributor {<total offset>, <width offset>, <multiplier>}
+                {(double)WIDTH - 1, -1, 3},
+                {(double)WIDTH, 0, 5},
+                {(double)WIDTH + 1, 1, 1}
+            },
 
-		/*Jarvis-Judice-Ninke*/
-		{{48},
-		{1, 1, 7},
-		{2, 2, 5},
-		{(double)WIDTH - 2, -2, 3},
-		{(double)WIDTH - 1, -1, 5},
-		{(double)WIDTH, 0, 7},
-		{(double)WIDTH + 1, 1, 5},
-		{(double)WIDTH + 2, 2, 7},
-		{(double)WIDTH * 2 - 2, -2, 1},
-		{(double)WIDTH * 2 - 1, -1, 3},
-		{(double)WIDTH * 2, 0, 5},
-		{(double)WIDTH * 2 + 1, 1, 3},
-		{(double)WIDTH * 2 + 2, 2, 1}},
+            /*Jarvis-Judice-Ninke*/ {
+                {48},
+                {1, 1, 7},
+                {2, 2, 5},
+                {(double)WIDTH - 2, -2, 3},
+                {(double)WIDTH - 1, -1, 5},
+                {(double)WIDTH, 0, 7},
+                {(double)WIDTH + 1, 1, 5},
+                {(double)WIDTH + 2, 2, 7},
+                {(double)WIDTH * 2 - 2, -2, 1},
+                {(double)WIDTH * 2 - 1, -1, 3},
+                {(double)WIDTH * 2, 0, 5},
+                {(double)WIDTH * 2 + 1, 1, 3},
+                {(double)WIDTH * 2 + 2, 2, 1}
+            },
 
-		/*Burkes*/
-		{{32},
-		{1, 1, 8},
-		{2, 2, 4},
-		{(double)WIDTH - 2, -2, 2},
-		{(double)WIDTH - 1, -1, 4},
-		{(double)WIDTH, 0, 8},
-		{(double)WIDTH + 1, 1, 4},
-		{(double)WIDTH + 2, 2, 2}}
-	};
+            /*Burkes*/ {
+                {32},
+                {1, 1, 8},
+                {2, 2, 4},
+                {(double)WIDTH - 2, -2, 2},
+                {(double)WIDTH - 1, -1, 4},
+                {(double)WIDTH, 0, 8},
+                {(double)WIDTH + 1, 1, 4},
+                {(double)WIDTH + 2, 2, 2}
+            }
+    };
 
-    //ADD: ClI Options for this
+    //ADD: ClI Options for ditherer
 	int DitherChosen = 0;
 	short Divisor = DitheringAlgorithms.at(DitherChosen).at(0).at(0);
 	int DitherSize = DitheringAlgorithms.at(DitherChosen).size();
@@ -455,13 +616,13 @@ int main(int argc, char** argv) {
 			}
 
 			//Resize the dictionary of RGB->Block conversion if necessary
-			if (!(rIndex < (*CurrColorList).size())) {
+			if (rIndex >= (*CurrColorList).size()) {
 				(*CurrColorList).resize(rIndex + 1);
 			}
-			if (!(gIndex < (*CurrColorList).at(rIndex).size())) {
+			if (gIndex >= (*CurrColorList).at(rIndex).size()) {
 				(*CurrColorList).at(rIndex).resize(gIndex + 1);
 			}
-			if (!(bIndex < (*CurrColorList).at(rIndex).at(gIndex).size())) {
+			if (bIndex >= (*CurrColorList).at(rIndex).at(gIndex).size()) {
 				//Fill unused space with -1
 				(*CurrColorList).at(rIndex).at(gIndex).resize(bIndex + 1, 255);
 			}
@@ -607,7 +768,7 @@ int main(int argc, char** argv) {
 	std::cout << "Downwards Fixes = " << downFixes << std::endl << std::endl;
 	std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl << std::endl;
     //ADD: Switch this to specified output image
-	std::string out = "FSNoOverflow.png";
+	std::string out = "First.png";
 	stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
 
 	std::cout << "hi" << std::endl;
@@ -986,209 +1147,10 @@ int main(int argc, char** argv) {
 
 	delete[] yHeight;
 	delete[] jump;
-	//delete[] dist;
 
-	std::cout << "hi" << std::endl;
+    psl_helperFunctionRunner(writeLitematic(Layers, NBT_X, NBT_Y, NBT_Z, NBT_XZ));
 
-	/****************************************************NBT SAVING***************************************************************/
-
-	char blockBits = 6;
-	const int BLOCK_ARRAY_SIZE = NBT_XZ * NBT_Y * blockBits / 64;
-	std::string Author = "Hunsinger";
-	std::string Description = "";
-	std::string NBTName = "Testing";
-
-	nbt_tag_t* tagTop = CreateCompoundTag("");
-		nbt_tag_t* tagMeta = CreateCompoundTag("Metadata");
-			nbt_tag_t* tagEncSize = CreateCompoundTag("EnclosingSize");
-				CreateIntTag("x", NBT_X, tagEncSize);
-				CreateIntTag("y", NBT_Y, tagEncSize);
-				CreateIntTag("z", NBT_Z + 1, tagEncSize);
-			CloseTag(tagEncSize, tagMeta);
-			CreateStringTag("Author", Author, tagMeta);
-			CreateStringTag("Description", Description, tagMeta);
-			CreateStringTag("Name", NBTName, tagMeta);
-			CreateIntTag("RegionCount", 1, tagMeta);
-			CreateLongTag("TimeCreated", time(0), tagMeta);
-			CreateLongTag("TimeModified", time(0), tagMeta);
-			CreateIntTag("TotalBlocks", BLOCK_ARRAY_SIZE, tagMeta);
-			CreateIntTag("TotalVolume", BLOCK_ARRAY_SIZE, tagMeta);
-		CloseTag(tagMeta, tagTop);
-		nbt_tag_t* tagRegions = CreateCompoundTag("Regions");
-			nbt_tag_t* tagMain = CreateCompoundTag(NBTName);
-				nbt_tag_t* tagPos = CreateCompoundTag("Position");
-					CreateIntTag("x", 0, tagPos);
-					CreateIntTag("y", 0, tagPos);
-					CreateIntTag("z", 0, tagPos);
-				CloseTag(tagPos, tagMain);
-				nbt_tag_t* tagSize = CreateCompoundTag("Size");
-					CreateIntTag("x", NBT_X, tagSize);
-					CreateIntTag("y", NBT_Y, tagSize);
-					CreateIntTag("z", NBT_Z + 1, tagSize);
-				CloseTag(tagSize, tagMain);
-				nbt_tag_t* tagPalette = CreateListTag("BlockStatePalette", nbt_tag_type_t::NBT_TYPE_COMPOUND);
-					nbt_tag_t* tagPalAir = CreateCompoundTag("");
-						CreateStringTag("Name", "minecraft:air", tagPalAir);
-					CloseTag(tagPalAir, tagPalette, false);
-					for (int i = 0; i < TOTAL_COLORS + 1; i++) {
-						nbt_tag_t* tagPal = CreateCompoundTag("");
-						CreateStringTag("Name", "minecraft:" + BlockTypes[i], tagPal);
-						CloseTag(tagPal, tagPalette, false);
-					}
-				CloseTag(tagPalette, tagMain);
-				CreateListTag("Entities", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
-				CreateListTag("PendingBlockTicks", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
-				CreateListTag("PendingFluidTicks", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
-				CreateListTag("TileEntities", nbt_tag_type_t::NBT_TYPE_COMPOUND, tagMain);
-
-	int64_t* longArr = new int64_t[BLOCK_ARRAY_SIZE]();
-	int64_t* Bits = longArr;
-	*Bits = 0;
-	char bitIndex = 0;
-	char longBitIndex = 0;
-
-	int y = 0;
-	while (y != NBT_Y && Layers[y].size() == 0) {
-		y++;
-	}
-	short Prev[3] = { -1, 0, 0 };
-
-	for (y; y != NBT_Y; y++) {
-		for (std::vector<std::array<short, 3>>::iterator it = Layers[y].begin(); it != Layers[y].end(); it++) {
-			int limit = it->at(0) - Prev[0] - 1 + (it->at(1) - Prev[1]) * NBT_X + (y - Prev[2]) * NBT_XZ;
-
-			if (limit >= 32 - bitIndex) {
-				limit -= 32 - bitIndex;
-				Bits += 1 + (bitIndex < 22) + (bitIndex < 11);
-				bitIndex = 0;
-				longBitIndex = 0;
-			}
-
-			int shift = limit >> 5;
-			Bits += 3 * shift;
-			limit -= shift << 5;
-
-			if (limit > (unsigned char)(21 - bitIndex)) {
-				limit -= 22 - bitIndex;
-				Bits += 1 + (bitIndex < 11);
-				bitIndex = 22;
-				longBitIndex = 4;
-			}
-			else if (limit > (unsigned char)(10 - bitIndex)) {
-				limit -= 11 - bitIndex;
-				Bits++;
-				bitIndex = 11;
-				longBitIndex = 2;
-			}
-			bitIndex += limit;
-			longBitIndex += blockBits * limit;
-
-
-			*Bits = *Bits | ((((int64_t)it->at(2) >> 2) + 1) << longBitIndex);
-			bitIndex++;
-			longBitIndex += blockBits;
-
-			switch (bitIndex) {
-			case 11:
-				Bits++;
-				*Bits = ((it->at(2) >> 2) + 1) >> 4;
-				longBitIndex = 2;
-				break;
-			case 22:
-				Bits++;
-				*Bits = ((it->at(2) >> 2) + 1) >> 2;
-				longBitIndex = 4;
-				break;
-			case 32:
-				Bits++;
-				*Bits = 0;
-				bitIndex = 0;
-				longBitIndex = 0;
-				break;
-			default:
-				break;
-			}
-
-			Prev[0] = it->at(0);
-			Prev[1] = it->at(1);
-			Prev[2] = y;
-		}
-	}
-
-	CreateLongArrayTag("BlockStates", longArr, BLOCK_ARRAY_SIZE, tagMain);
-
-	delete[] longArr;
-	longArr = nullptr;
-
-	CloseTag(tagMain, tagRegions);
-	CloseTag(tagRegions, tagTop);
-	CreateIntTag("MinecraftDataVersion", 2580, tagTop);
-	CreateIntTag("Version", 5, tagTop);
-
-	write_nbt_file("FoxIconTest3.litematic", tagTop, NBT_WRITE_FLAG_USE_GZIP);
-
-	return 0;
-
-
-	//int ColorListSizes[8] = { 0,0,0,0,0,0,0,0 };
-	//int TotalSpace = 0;
-
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < ColorLists[i].size(); j++) {
-			for (int k = 0; k < ColorLists[i].at(j).size(); k++) {
-				for (int l = 0; l < ColorLists[i].at(j).at(k).size(); l++) {
-					ColorListSizes[i] += (ColorLists[i].at(j).at(k).at(l) != -1);
-				}
-				TotalSpace += ColorLists[i].at(j).at(k).size();
-			}
-		}
-	}
-
-	//auto stop = std::chrono::high_resolution_clock::now();
-	//auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-
-	std::cout << "\nBlocks Used: " << std::endl;
-	//int terracotta = 0;
-	for (int i = 0; i < TOTAL_COLORS + 1; i++) {
-		std::cout << BlockTypes[i] << " : " << BlocksUsed[0][0][i] << std::endl;
-		if (i >= 34 && i < 50) {
-			terracotta += BlocksUsed[0][0][i];
-		}
-	}
-	std::cout << "Terracotta: " << terracotta << std::endl;
-	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
-		for (int j = 0; j < BLOCKS_USED_WIDTH; j++) {
-			int palette = 1;
-			for (int k = 0; k < TOTAL_COLORS + 1; k++) {
-				palette += BlocksUsed[i][j][k] > 0;
-			}
-			std::cout << "Palette of " << argv[1] << "_" << i << "_" << j << ": " << palette << std::endl;
-		}
-	}
-	std::cout << std::endl;
-
-	/*********************************************************************************************************
-	**********************************************************************************************************
-	*******************Ping Haph for completed project & Knight for Fox Icon Mapart***************************
-	**********************************************************************************************************
-	**********************************************************************************************************/
-
-	std::cout << "PosPosPosSize = " << ColorListSizes[0] << std::endl;
-	std::cout << "PosPosNegSize = " << ColorListSizes[1] << std::endl;
-	std::cout << "PosNegPosSize = " << ColorListSizes[2] << std::endl;
-	std::cout << "PosNegNegSize = " << ColorListSizes[3] << std::endl;
-	std::cout << "NegPosPosSize = " << ColorListSizes[4] << std::endl;
-	std::cout << "NegPosNegSize = " << ColorListSizes[5] << std::endl;
-	std::cout << "NegNegPosSize = " << ColorListSizes[6] << std::endl;
-	std::cout << "NegNegNegSize = " << ColorListSizes[7] << std::endl;
-	std::cout << "Total Size used = " << TotalSpace << std::endl << std::endl;
-	std::cout << "Upwards Fixes = " << upFixes << std::endl;
-	std::cout << "Downwards Fixes = " << downFixes << std::endl << std::endl;
-	std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl << std::endl;
-	//std::string out = "FSNoOverflow.png";
-	stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
-
-	//Clean up
+    //Clean up
 	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
 		for (int j = 0; j < BLOCKS_USED_WIDTH; j++)
 			delete[] BlocksUsed[i][j];

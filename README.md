@@ -8,14 +8,16 @@ All code is in `src`.
 
 `GUI` is polarbub's GUI
 
+`libraries` all the libraries used. PSL is 'polar standard library' dm me if you need access
+
 ## Build System
-I'm using cmake because it's somewhat cross platform.
+I'm using cmake because it's somewhat cross-platform.
 
 In Visual Studio you can open CMakeLists.txt as a project.
 
 In CLion you can open the folder containing CMakeLists.txt.
 
-## Todo Comments
+## TODO Comments
 CLion has a todo feature that lets me find comments starting with a configurable value. I have it set up like so;
 
 1) `ADD:` A feature needs to be added.

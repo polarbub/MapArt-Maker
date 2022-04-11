@@ -34,7 +34,7 @@
 //All the nbt related helper functions have been moved to /nbt/nbtDriver
 //Comparisons here have been moved to the 'comparison' namespace.
 
-int parseArguments(int& argc, char** argv) {
+int parseArguments(int& argc, char** &argv) {
     std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
 
     if (commandLineArgs.size() == 0) {
@@ -269,6 +269,356 @@ int parseSettings() {
     return -1;
 }
 
+int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, unsigned char** &BlockData, int*** &BlocksUsed, int &BLOCKS_USED_HEIGHT, int &BLOCKS_USED_WIDTH) {
+    ColorSpace::Lab Colors[TOTAL_COLORS * 4];
+    for (int i = 0; i < TOTAL_COLORS * 4; i++) {
+        ColorSpace::ToLab(BlockColors[i], &Colors[i]);
+    }
+
+    const int HEIGHT = height;
+    const int WIDTH = width;
+    const size_t sizeIn = WIDTH * HEIGHT * channels;
+    const size_t sizeOut = WIDTH * HEIGHT * 3;
+    unsigned char* imageOut = new unsigned char[sizeOut];
+
+    const std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
+            /*Floyd-Steinberg*/ {
+                                        {16},		//Divisor
+                                        {1, 1, 7},	//Distributor {<total offset>, <width offset>, <multiplier>}
+                                        {(double)WIDTH - 1, -1, 3},
+                                        {(double)WIDTH, 0, 5},
+                                        {(double)WIDTH + 1, 1, 1}
+                                },
+
+            /*Jarvis-Judice-Ninke*/ {
+                                        {48},
+                                        {1, 1, 7},
+                                        {2, 2, 5},
+                                        {(double)WIDTH - 2, -2, 3},
+                                        {(double)WIDTH - 1, -1, 5},
+                                        {(double)WIDTH, 0, 7},
+                                        {(double)WIDTH + 1, 1, 5},
+                                        {(double)WIDTH + 2, 2, 7},
+                                        {(double)WIDTH * 2 - 2, -2, 1},
+                                        {(double)WIDTH * 2 - 1, -1, 3},
+                                        {(double)WIDTH * 2, 0, 5},
+                                        {(double)WIDTH * 2 + 1, 1, 3},
+                                        {(double)WIDTH * 2 + 2, 2, 1}
+                                },
+
+            /*Burkes*/ {
+                                        {32},
+                                        {1, 1, 8},
+                                        {2, 2, 4},
+                                        {(double)WIDTH - 2, -2, 2},
+                                        {(double)WIDTH - 1, -1, 4},
+                                        {(double)WIDTH, 0, 8},
+                                        {(double)WIDTH + 1, 1, 4},
+                                        {(double)WIDTH + 2, 2, 2}
+                                }
+    };
+
+    //ADD: ClI Options for ditherer
+    int DitherChosen = 0;
+    short Divisor = DitheringAlgorithms.at(DitherChosen).at(0).at(0);
+    int DitherSize = DitheringAlgorithms.at(DitherChosen).size();
+
+    int MaxSize = 0;
+    for (int i = 1; i < DitherSize; i++) {
+        if (DitheringAlgorithms.at(DitherChosen).at(i).at(0) > MaxSize) {
+            MaxSize = DitheringAlgorithms.at(DitherChosen).at(i).at(0);
+        }
+    }
+    MaxSize += HEIGHT * WIDTH;
+
+    short* ErrorsR = new short[MaxSize]();
+    short* ErrorsG = new short[MaxSize]();
+    short* ErrorsB = new short[MaxSize]();
+    std::vector<std::vector<std::vector<unsigned char>>> ColorLists[8] = { {},{},{},{},{},{},{},{} };
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    int direction = 1;
+    int width_pos = 0;
+    int height_pos = 0;
+    int pos = 0;
+    int times = 0;
+
+    BlockData = new unsigned char* [WIDTH];
+    for (int i = 0; i < WIDTH; i++) {
+        BlockData[i] = new unsigned char [HEIGHT] {255};
+    }
+
+    short* prev_heights = new short[WIDTH];
+    short* upRand = new short[WIDTH];
+    short* downRand = new short[WIDTH];
+    for (int i = 0; i < WIDTH; i++) {
+        prev_heights[i] = 1;
+        if (!constMaxHeight) {
+            upRand[i] = rand() % 15 + 240;
+            downRand[i] = rand() % 15 - 253;
+        }
+        else {
+            upRand[i] = 255;
+            downRand[i] = -255;
+        }
+    }
+    int upFixes = 0;
+    int downFixes = 0;
+
+    BLOCKS_USED_HEIGHT = ceil(HEIGHT / 384.0f);
+    BLOCKS_USED_WIDTH = ceil(WIDTH / 384.0f);
+    BlocksUsed = new int** [BLOCKS_USED_HEIGHT]();
+    for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
+        BlocksUsed[i] = new int* [BLOCKS_USED_WIDTH]();
+        for (int j = 0; j < BLOCKS_USED_WIDTH; j++)
+            BlocksUsed[i][j] = new int[TOTAL_COLORS + 1]();
+    }
+
+    int qs = 0;
+
+    //loop from the start of the input image to the end, copying RGB values over to the output image after altering them based on the algorithm
+    for (unsigned char* p = imageIn, *pg = imageOut; p != imageIn + sizeIn; p += channels, pg += 3, pos++) {
+        /*qs++;
+        if (qs % 10000 == 0) {
+            std::cout << qs << std::endl;
+        }*/
+        //Take the dithering errors for the current pixel and add them to the input RGB values
+        short r = *p + ErrorsR[pos];
+        short g = *(p + 1) + ErrorsG[pos];
+        short b = *(p + 2) + ErrorsB[pos];
+        short ErrR;
+        short ErrG;
+        short ErrB;
+
+
+        //constrains the rgb values between negLimit and posLimit
+        r = r < minR ? minR : r > maxR ? maxR : r;
+        g = g < minG ? minG : g > maxG ? maxG : g;
+        b = b < minB ? minB : b > maxB ? maxB : b;
+
+        //Get the correct RGB->Block dictionary based on the polarity of the RGB values (8 total possible values)
+        std::vector<std::vector<std::vector<unsigned char>>>* CurrColorList = &ColorLists[(r < 0) * 4 + (g < 0) * 2 + (b < 0)];
+        short rIndex = abs(r);
+        short gIndex = abs(g);
+        short bIndex = abs(b);
+        unsigned char colorIndex = 0;
+        bool foundMatch = false;
+        bool initError = false;
+
+        //Search through the dictionary for an RGB match
+        if (rIndex < (*CurrColorList).size() && gIndex < (*CurrColorList).at(rIndex).size() && bIndex < (*CurrColorList).at(rIndex).at(gIndex).size()) {
+            colorIndex = (*CurrColorList).at(rIndex).at(gIndex).at(bIndex);
+            foundMatch = colorIndex != 255;
+        }
+        initError = foundMatch;
+
+        double minError;
+        //Convert the RGB values to the LAB color space
+        ColorSpace::Lab colorLAB;
+        ColorSpace::ToLab({ (double)r, (double)g, (double)b }, &colorLAB);
+
+        //If a match is not found
+        if (!foundMatch) {
+            int i = 0;
+            while (!AllowedColors[i]) {
+                i++;
+            }
+
+            //Set a default error to compare future errors against
+            double L = colorLAB.l - Colors[i].l;
+            double A = colorLAB.a - Colors[i].a;
+            double B = colorLAB.b - Colors[i].b;
+            minError = (L * L + A * A + B * B) * 1000;
+            colorIndex = i;
+
+            for (i++; i < (TOTAL_COLORS << 2); i++) {
+                if (AllowedColors[i]) {
+                    //Get the error between the selected color and each of the possible block colors
+                    L = colorLAB.l - Colors[i].l;
+                    A = colorLAB.a - Colors[i].a;
+                    B = colorLAB.b - Colors[i].b;
+                    double currError = (L * L + A * A + B * B);
+
+                    //Penalties for certain blocks (decreases the likelihood of certain blocks being used)
+                    /*if ((i >> 2) != 3 && (i >> 2) != 6 && (i >> 2) != 11 && (i >> 2) != 7 && (i >> 2) != 28) {
+                        currError = (currError + 1000) * 1000;
+                    }*/
+                    /*if (i >= 35*4 && i < 51*4) {
+                        currError *= 2;
+                    }*/
+                    /*else if (i > 149) {
+                        currError *= 4;
+                    }*/
+
+                    //Save index if the error is the lowest found so far
+                    if (currError < minError) {
+                        minError = currError;
+                        colorIndex = i;
+                    }
+                }
+            }
+
+            //Resize the dictionary of RGB->Block conversion if necessary
+            if (rIndex >= (*CurrColorList).size()) {
+                (*CurrColorList).resize(rIndex + 1);
+            }
+            if (gIndex >= (*CurrColorList).at(rIndex).size()) {
+                (*CurrColorList).at(rIndex).resize(gIndex + 1);
+            }
+            if (bIndex >= (*CurrColorList).at(rIndex).at(gIndex).size()) {
+                //Fill unused space with -1
+                (*CurrColorList).at(rIndex).at(gIndex).resize(bIndex + 1, 255);
+            }
+
+            //Update the dictionary with the new addition
+            (*CurrColorList).at(rIndex).at(gIndex).at(bIndex) = colorIndex;
+        }
+
+        //Check for and apply height-limit fixes when necessary based on what shade of block color was chosen (staircasing)
+        if (StairCaseMode != unlimited) {
+            switch (colorIndex & 3) {
+                case DOWN: //Staircasing downwards
+                    if (prev_heights[width_pos] < 1) {
+                        prev_heights[width_pos] = 1;
+                    }
+                    else if (prev_heights[width_pos] == upRand[width_pos]) {
+                        downFixes++;
+                        prev_heights[width_pos] = 1;
+                        colorIndex += 2;
+                        initError = true;
+                        //std::cout << "DOWNWARDS FIX AT " << pos << "  " << BlockColors[colorIndex].r << "," << BlockColors[colorIndex].g << "," << BlockColors[colorIndex].b << std::endl;
+                    }
+                    else {
+                        prev_heights[width_pos]++;
+                    }
+                    break;
+                case UP: //Staircasing upwards
+                    if (prev_heights[width_pos] > 1) {
+                        prev_heights[width_pos] = -1;
+                    }
+                    else if (prev_heights[width_pos] == downRand[width_pos]) {
+                        upFixes++;
+                        prev_heights[width_pos] = 1;
+                        colorIndex -= 2;
+                        initError = true;
+                        //std::cout << "UPWARDS FIX AT " << pos << "  " << BlockColors[colorIndex].r << "," << BlockColors[colorIndex].g << "," << BlockColors[colorIndex].b << std::endl;
+                    }
+                    else {
+                        prev_heights[width_pos]--;
+                    }
+                    break;
+                default: //Case 1 is no staircasing, therefore no checks are necessary
+                    break;
+            }
+        }
+
+        //Get the new color from the list of allowed block colors
+        ColorSpace::Rgb NewColor = BlockColors[colorIndex];
+        //Increment the block used
+        BlockData[width_pos][height_pos] = colorIndex;
+        BlocksUsed[height_pos / NBT_X][width_pos / NBT_X][colorIndex >> 2]++;
+        BlocksUsed[height_pos / NBT_X][width_pos / NBT_X][TOTAL_COLORS] += needsSupport[colorIndex >> 2];
+        TotalBlocksUsed[colorIndex >> 2]++;
+        TotalBlocksUsed[TOTAL_COLORS] += needsSupport[colorIndex >> 2];
+        //Save the RGB values to the output image and determine the RGB errors
+        *pg = (unsigned char)NewColor.r;
+        *(pg + 1) = (unsigned char)NewColor.g;
+        *(pg + 2) = (unsigned char)NewColor.b;
+        ErrR = (r - NewColor.r);
+        ErrG = (g - NewColor.g);
+        ErrB = (b - NewColor.b);
+
+        //Apply the dithering based on the dithering algorithm chosen and the RGB errors found above
+        if (!noDither) {
+            for (int i = 1; i < DitherSize; i++) {
+                if (width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) >= 0 && width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) < WIDTH) {
+                    int new_pos = pos + DitheringAlgorithms.at(DitherChosen).at(i).at(0);
+                    short multiply = DitheringAlgorithms.at(DitherChosen).at(i).at(2);
+                    ErrorsR[new_pos] += (ErrR * multiply) / Divisor;
+                    ErrorsG[new_pos] += (ErrG * multiply) / Divisor;
+                    ErrorsB[new_pos] += (ErrB * multiply) / Divisor;
+                }
+            }
+        }
+
+        //Update the position currently at in the image
+        width_pos++;
+        height_pos += width_pos == WIDTH;
+        width_pos *= width_pos != WIDTH;
+    }
+
+    int ColorListSizes[8] = { 0,0,0,0,0,0,0,0 };
+    int TotalSpace = 0;
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < ColorLists[i].size(); j++) {
+            for (int k = 0; k < ColorLists[i].at(j).size(); k++) {
+                for (int l = 0; l < ColorLists[i].at(j).at(k).size(); l++) {
+                    ColorListSizes[i] += (ColorLists[i].at(j).at(k).at(l) != -1);
+                }
+                TotalSpace += ColorLists[i].at(j).at(k).size();
+            }
+        }
+    }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
+    int tot = 0;
+    std::cout << "\nBlocks Used: " << std::endl;
+    int terracotta = 0;
+
+    for (int i = 0; i < TOTAL_COLORS + 1; i++) {
+        std::cout << BlockTypes[i] << " : ";
+        std::cout << TotalBlocksUsed[i] << std::endl;
+        /*if (TotalBlocksUsed[i] < 1000) {
+            std::cout << TotalBlocksUsed[i] << std::endl;
+        }
+        else if (TotalBlocksUsed[i] < 1000000) {
+            std::cout << TotalBlocksUsed[i] / 1000 << "," << std::setw(3) << TotalBlocksUsed[i] % 1000 << std::setw(0) << std::endl;
+        }
+        else {
+            std::cout << TotalBlocksUsed[i] / 1000000 << "," << std::setw(3) << TotalBlocksUsed[i] / 1000 % 1000 << "," << TotalBlocksUsed[i] % 1000 << std::setw(0) << std::endl;
+        }*/
+        tot += TotalBlocksUsed[i];
+        if (i >= 35 && i < 51) {
+            terracotta += TotalBlocksUsed[i];
+        }
+    }
+    std::cout << "TOTAL: " << tot / 1000000 << "," << std::setw(3) << tot / 1000 % 1000 << "," << tot % 1000 << std::setw(0) << std::endl << std::endl;
+    std::cout << "Terracotta: " << terracotta << std::endl;
+    for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
+        for (int j = 0; j < BLOCKS_USED_WIDTH; j++) {
+            int palette = 1;
+            for (int k = 0; k < TOTAL_COLORS + 1; k++) {
+                palette += BlocksUsed[i][j][k] > 0;
+            }
+            //FIX: not argv!
+            std::cout << "Palette of " << argv[1] << "_" << i << "_" << j << ": " << palette << std::endl;
+        }
+    }
+    std::cout << std::endl;
+
+    std::cout << "PosPosPosSize = " << ColorListSizes[0] << std::endl;
+    std::cout << "PosPosNegSize = " << ColorListSizes[1] << std::endl;
+    std::cout << "PosNegPosSize = " << ColorListSizes[2] << std::endl;
+    std::cout << "PosNegNegSize = " << ColorListSizes[3] << std::endl;
+    std::cout << "NegPosPosSize = " << ColorListSizes[4] << std::endl;
+    std::cout << "NegPosNegSize = " << ColorListSizes[5] << std::endl;
+    std::cout << "NegNegPosSize = " << ColorListSizes[6] << std::endl;
+    std::cout << "NegNegNegSize = " << ColorListSizes[7] << std::endl;
+    std::cout << "Total Size used = " << TotalSpace << std::endl << std::endl;
+    std::cout << "Upwards Fixes = " << upFixes << std::endl;
+    std::cout << "Downwards Fixes = " << downFixes << std::endl << std::endl;
+    std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl << std::endl;
+    //ADD: Switch this to specified output image
+    std::string out = "First.png";
+    stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
+
+    return -1;
+}
+
 int writeLitematic(std::vector<std::array<short, 3>> *Layers, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ) {
     std::cout << "WRITING LITEMATIC" << std::endl;
 
@@ -409,7 +759,7 @@ int writeLitematic(std::vector<std::array<short, 3>> *Layers, const short& NBT_X
 
     //FIX: Change this file name to be dynamic
     write_nbt_file("FoxIconTest3.litematic", tagTop, NBT_WRITE_FLAG_USE_GZIP);
-    std::cout << "DONE WRITING LITEMATIC" << std::endl;
+    std::cout << "FINISHED WRITING LITEMATIC" << std::endl;
 
     return -1;
 }
@@ -421,363 +771,26 @@ int main(int argc, char** argv) {
 
     /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
 
-    ColorSpace::Lab Colors[TOTAL_COLORS * 4];
-    for (int i = 0; i < TOTAL_COLORS * 4; i++) {
-        ColorSpace::ToLab(BlockColors[i], &Colors[i]);
-    }
+    //All these are artifacts of moving into helper functions and needing global variables.
+    //FIX: Maybe make these global?
+    const short NBT_X = 384;
+    const short NBT_Y = 256;
+    const short NBT_Z = 384;
+    const int NBT_XZ = NBT_X * (NBT_Z + 1);
 
-    const int HEIGHT = height;
-    const int WIDTH = width;
-    const size_t sizeIn = WIDTH * HEIGHT * channels;
-    const size_t sizeOut = WIDTH * HEIGHT * 3;
-    unsigned char* imageOut = new unsigned char[sizeOut];
+    unsigned char **BlockData;
+    int*** BlocksUsed;
 
-    const std::vector<std::vector<std::vector<double>>> DitheringAlgorithms = {
-            /*Floyd-Steinberg*/ {
-                {16},		//Divisor
-                {1, 1, 7},	//Distributor {<total offset>, <width offset>, <multiplier>}
-                {(double)WIDTH - 1, -1, 3},
-                {(double)WIDTH, 0, 5},
-                {(double)WIDTH + 1, 1, 1}
-            },
+    int BLOCKS_USED_HEIGHT = 0;
+    int BLOCKS_USED_WIDTH = 0;
 
-            /*Jarvis-Judice-Ninke*/ {
-                {48},
-                {1, 1, 7},
-                {2, 2, 5},
-                {(double)WIDTH - 2, -2, 3},
-                {(double)WIDTH - 1, -1, 5},
-                {(double)WIDTH, 0, 7},
-                {(double)WIDTH + 1, 1, 5},
-                {(double)WIDTH + 2, 2, 7},
-                {(double)WIDTH * 2 - 2, -2, 1},
-                {(double)WIDTH * 2 - 1, -1, 3},
-                {(double)WIDTH * 2, 0, 5},
-                {(double)WIDTH * 2 + 1, 1, 3},
-                {(double)WIDTH * 2 + 2, 2, 1}
-            },
+    psl_helperFunctionRunner(reduceColors(argv, NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, BlocksUsed, BLOCKS_USED_HEIGHT, BLOCKS_USED_WIDTH));
 
-            /*Burkes*/ {
-                {32},
-                {1, 1, 8},
-                {2, 2, 4},
-                {(double)WIDTH - 2, -2, 2},
-                {(double)WIDTH - 1, -1, 4},
-                {(double)WIDTH, 0, 8},
-                {(double)WIDTH + 1, 1, 4},
-                {(double)WIDTH + 2, 2, 2}
-            }
-    };
+	/*********************************************************Prevent height under and overflows for minecraft****************************************************************/
 
-    //ADD: ClI Options for ditherer
-	int DitherChosen = 0;
-	short Divisor = DitheringAlgorithms.at(DitherChosen).at(0).at(0);
-	int DitherSize = DitheringAlgorithms.at(DitherChosen).size();
+    std::cout << "OVERFLOW FIXING" << std::endl;
 
-	int MaxSize = 0;
-	for (int i = 1; i < DitherSize; i++) {
-		if (DitheringAlgorithms.at(DitherChosen).at(i).at(0) > MaxSize) {
-			MaxSize = DitheringAlgorithms.at(DitherChosen).at(i).at(0);
-		}
-	}
-	MaxSize += HEIGHT * WIDTH;
-
-	short* ErrorsR = new short[MaxSize]();
-	short* ErrorsG = new short[MaxSize]();
-	short* ErrorsB = new short[MaxSize]();
-	std::vector<std::vector<std::vector<unsigned char>>> ColorLists[8] = { {},{},{},{},{},{},{},{} };
-
-	auto start = std::chrono::high_resolution_clock::now();
-
-	int direction = 1;
-	int width_pos = 0;
-	int height_pos = 0;
-	int pos = 0;
-	int times = 0;
-
-	unsigned char** BlockData = new unsigned char* [WIDTH];
-	for (int i = 0; i < WIDTH; i++) {
-		BlockData[i] = new unsigned char [HEIGHT] {255};
-	}
-
-	short* prev_heights = new short[WIDTH];
-	short* upRand = new short[WIDTH];
-	short* downRand = new short[WIDTH];
-	for (int i = 0; i < WIDTH; i++) {
-		prev_heights[i] = 1;
-		if (!constMaxHeight) {
-			upRand[i] = rand() % 15 + 240;
-			downRand[i] = rand() % 15 - 253;
-		}
-		else {
-			upRand[i] = 255;
-			downRand[i] = -255;
-		}
-	}
-	int upFixes = 0;
-	int downFixes = 0;
-
-	const int BLOCKS_USED_HEIGHT = ceil(HEIGHT / 384.0f);
-	const int BLOCKS_USED_WIDTH = ceil(WIDTH / 384.0f);
-	int*** BlocksUsed = new int** [BLOCKS_USED_HEIGHT]();
-	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
-		BlocksUsed[i] = new int* [BLOCKS_USED_WIDTH]();
-		for (int j = 0; j < BLOCKS_USED_WIDTH; j++)
-			BlocksUsed[i][j] = new int[TOTAL_COLORS + 1]();
-	}
-
-	const short NBT_X = 384;
-	const short NBT_Y = 256;
-	const short NBT_Z = 384;
-	const int NBT_XZ = NBT_X * (NBT_Z + 1);
-
-	int qs = 0;
-
-	//loop from the start of the input image to the end, copying RGB values over to the output image after altering them based on the algorithm
-	for (unsigned char* p = imageIn, *pg = imageOut; p != imageIn + sizeIn; p += channels, pg += 3, pos++) {
-		/*qs++;
-		if (qs % 10000 == 0) {
-			std::cout << qs << std::endl;
-		}*/
-		//Take the dithering errors for the current pixel and add them to the input RGB values
-		short r = *p + ErrorsR[pos];
-		short g = *(p + 1) + ErrorsG[pos];
-		short b = *(p + 2) + ErrorsB[pos];
-		short ErrR;
-		short ErrG;
-		short ErrB;
-
-
-		//constrains the rgb values between negLimit and posLimit
-		r = r < minR ? minR : r > maxR ? maxR : r;
-		g = g < minG ? minG : g > maxG ? maxG : g;
-		b = b < minB ? minB : b > maxB ? maxB : b;
-
-		//Get the correct RGB->Block dictionary based on the polarity of the RGB values (8 total possible values)
-		std::vector<std::vector<std::vector<unsigned char>>>* CurrColorList = &ColorLists[(r < 0) * 4 + (g < 0) * 2 + (b < 0)];
-		short rIndex = abs(r);
-		short gIndex = abs(g);
-		short bIndex = abs(b);
-		unsigned char colorIndex = 0;
-		bool foundMatch = false;
-		bool initError = false;
-
-		//Search through the dictionary for an RGB match
-		if (rIndex < (*CurrColorList).size() && gIndex < (*CurrColorList).at(rIndex).size() && bIndex < (*CurrColorList).at(rIndex).at(gIndex).size()) {
-			colorIndex = (*CurrColorList).at(rIndex).at(gIndex).at(bIndex);
-			foundMatch = colorIndex != 255;
-		}
-		initError = foundMatch;
-
-		double minError;
-		//Convert the RGB values to the LAB color space
-		ColorSpace::Lab colorLAB;
-        ColorSpace::ToLab({ (double)r, (double)g, (double)b }, &colorLAB);
-
-		//If a match is not found
-		if (!foundMatch) {
-			int i = 0;
-			while (!AllowedColors[i]) {
-				i++;
-			}
-
-			//Set a default error to compare future errors against
-			double L = colorLAB.l - Colors[i].l;
-			double A = colorLAB.a - Colors[i].a;
-			double B = colorLAB.b - Colors[i].b;
-			minError = (L * L + A * A + B * B) * 1000;
-			colorIndex = i;
-
-			for (i++; i < (TOTAL_COLORS << 2); i++) {
-				if (AllowedColors[i]) {
-					//Get the error between the selected color and each of the possible block colors
-					L = colorLAB.l - Colors[i].l;
-					A = colorLAB.a - Colors[i].a;
-					B = colorLAB.b - Colors[i].b;
-					double currError = (L * L + A * A + B * B);
-
-					//Penalties for certain blocks (decreases the likelihood of certain blocks being used)
-					/*if ((i >> 2) != 3 && (i >> 2) != 6 && (i >> 2) != 11 && (i >> 2) != 7 && (i >> 2) != 28) {
-						currError = (currError + 1000) * 1000;
-					}*/
-					/*if (i >= 35*4 && i < 51*4) {
-						currError *= 2;
-					}*/
-					/*else if (i > 149) {
-						currError *= 4;
-					}*/
-
-					//Save index if the error is the lowest found so far
-					if (currError < minError) {
-						minError = currError;
-						colorIndex = i;
-					}
-				}
-			}
-
-			//Resize the dictionary of RGB->Block conversion if necessary
-			if (rIndex >= (*CurrColorList).size()) {
-				(*CurrColorList).resize(rIndex + 1);
-			}
-			if (gIndex >= (*CurrColorList).at(rIndex).size()) {
-				(*CurrColorList).at(rIndex).resize(gIndex + 1);
-			}
-			if (bIndex >= (*CurrColorList).at(rIndex).at(gIndex).size()) {
-				//Fill unused space with -1
-				(*CurrColorList).at(rIndex).at(gIndex).resize(bIndex + 1, 255);
-			}
-
-			//Update the dictionary with the new addition
-			(*CurrColorList).at(rIndex).at(gIndex).at(bIndex) = colorIndex;
-		}
-
-		//Check for and apply height-limit fixes when necessary based on what shade of block color was chosen (staircasing)
-		if (StairCaseMode != unlimited) {
-			switch (colorIndex & 3) {
-			case DOWN: //Staircasing downwards
-				if (prev_heights[width_pos] < 1) {
-					prev_heights[width_pos] = 1;
-				}
-				else if (prev_heights[width_pos] == upRand[width_pos]) {
-					downFixes++;
-					prev_heights[width_pos] = 1;
-					colorIndex += 2;
-					initError = true;
-					//std::cout << "DOWNWARDS FIX AT " << pos << "  " << BlockColors[colorIndex].r << "," << BlockColors[colorIndex].g << "," << BlockColors[colorIndex].b << std::endl;
-				}
-				else {
-					prev_heights[width_pos]++;
-				}
-				break;
-			case UP: //Staircasing upwards
-				if (prev_heights[width_pos] > 1) {
-					prev_heights[width_pos] = -1;
-				}
-				else if (prev_heights[width_pos] == downRand[width_pos]) {
-					upFixes++;
-					prev_heights[width_pos] = 1;
-					colorIndex -= 2;
-					initError = true;
-					//std::cout << "UPWARDS FIX AT " << pos << "  " << BlockColors[colorIndex].r << "," << BlockColors[colorIndex].g << "," << BlockColors[colorIndex].b << std::endl;
-				}
-				else {
-					prev_heights[width_pos]--;
-				}
-				break;
-			default: //Case 1 is no staircasing, therefore no checks are necessary
-				break;
-			}
-		}
-
-		//Get the new color from the list of allowed block colors
-		ColorSpace::Rgb NewColor = BlockColors[colorIndex];
-		//Increment the block used
-		BlockData[width_pos][height_pos] = colorIndex;
-		BlocksUsed[height_pos / NBT_X][width_pos / NBT_X][colorIndex >> 2]++;
-		BlocksUsed[height_pos / NBT_X][width_pos / NBT_X][TOTAL_COLORS] += needsSupport[colorIndex >> 2];
-		TotalBlocksUsed[colorIndex >> 2]++;
-		TotalBlocksUsed[TOTAL_COLORS] += needsSupport[colorIndex >> 2];
-		//Save the RGB values to the output image and determine the RGB errors
-		*pg = (unsigned char)NewColor.r;
-		*(pg + 1) = (unsigned char)NewColor.g;
-		*(pg + 2) = (unsigned char)NewColor.b;
-		ErrR = (r - NewColor.r);
-		ErrG = (g - NewColor.g);
-		ErrB = (b - NewColor.b);
-
-		//Apply the dithering based on the dithering algorithm chosen and the RGB errors found above
-		if (!noDither) {
-			for (int i = 1; i < DitherSize; i++) {
-				if (width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) >= 0 && width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) < WIDTH) {
-					int new_pos = pos + DitheringAlgorithms.at(DitherChosen).at(i).at(0);
-					short multiply = DitheringAlgorithms.at(DitherChosen).at(i).at(2);
-					ErrorsR[new_pos] += (ErrR * multiply) / Divisor;
-					ErrorsG[new_pos] += (ErrG * multiply) / Divisor;
-					ErrorsB[new_pos] += (ErrB * multiply) / Divisor;
-				}
-			}
-		}
-
-		//Update the position currently at in the image
-		width_pos++;
-		height_pos += width_pos == WIDTH;
-		width_pos *= width_pos != WIDTH;
-	}
-
-	int ColorListSizes[8] = { 0,0,0,0,0,0,0,0 };
-	int TotalSpace = 0;
-
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < ColorLists[i].size(); j++) {
-			for (int k = 0; k < ColorLists[i].at(j).size(); k++) {
-				for (int l = 0; l < ColorLists[i].at(j).at(k).size(); l++) {
-					ColorListSizes[i] += (ColorLists[i].at(j).at(k).at(l) != -1);
-				}
-				TotalSpace += ColorLists[i].at(j).at(k).size();
-			}
-		}
-	}
-
-	auto stop = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-
-	int tot = 0;
-	std::cout << "\nBlocks Used: " << std::endl;
-	int terracotta = 0;
-
-	for (int i = 0; i < TOTAL_COLORS + 1; i++) {
-		std::cout << BlockTypes[i] << " : ";
-		std::cout << TotalBlocksUsed[i] << std::endl;
-		/*if (TotalBlocksUsed[i] < 1000) {
-			std::cout << TotalBlocksUsed[i] << std::endl;
-		}
-		else if (TotalBlocksUsed[i] < 1000000) {
-			std::cout << TotalBlocksUsed[i] / 1000 << "," << std::setw(3) << TotalBlocksUsed[i] % 1000 << std::setw(0) << std::endl;
-		}
-		else {
-			std::cout << TotalBlocksUsed[i] / 1000000 << "," << std::setw(3) << TotalBlocksUsed[i] / 1000 % 1000 << "," << TotalBlocksUsed[i] % 1000 << std::setw(0) << std::endl;
-		}*/
-		tot += TotalBlocksUsed[i];
-		if (i >= 35 && i < 51) {
-			terracotta += TotalBlocksUsed[i];
-		}
-	}
-	std::cout << "TOTAL: " << tot / 1000000 << "," << std::setw(3) << tot / 1000 % 1000 << "," << tot % 1000 << std::setw(0) << std::endl << std::endl;
-	std::cout << "Terracotta: " << terracotta << std::endl;
-	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
-		for (int j = 0; j < BLOCKS_USED_WIDTH; j++) {
-			int palette = 1;
-			for (int k = 0; k < TOTAL_COLORS + 1; k++) {
-				palette += BlocksUsed[i][j][k] > 0;
-			}
-			std::cout << "Palette of " << argv[1] << "_" << i << "_" << j << ": " << palette << std::endl;
-		}
-	}
-	std::cout << std::endl;
-
-	std::cout << "PosPosPosSize = " << ColorListSizes[0] << std::endl;
-	std::cout << "PosPosNegSize = " << ColorListSizes[1] << std::endl;
-	std::cout << "PosNegPosSize = " << ColorListSizes[2] << std::endl;
-	std::cout << "PosNegNegSize = " << ColorListSizes[3] << std::endl;
-	std::cout << "NegPosPosSize = " << ColorListSizes[4] << std::endl;
-	std::cout << "NegPosNegSize = " << ColorListSizes[5] << std::endl;
-	std::cout << "NegNegPosSize = " << ColorListSizes[6] << std::endl;
-	std::cout << "NegNegNegSize = " << ColorListSizes[7] << std::endl;
-	std::cout << "Total Size used = " << TotalSpace << std::endl << std::endl;
-	std::cout << "Upwards Fixes = " << upFixes << std::endl;
-	std::cout << "Downwards Fixes = " << downFixes << std::endl << std::endl;
-	std::cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl << std::endl;
-    //ADD: Switch this to specified output image
-	std::string out = "First.png";
-	stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
-
-	std::cout << "hi" << std::endl;
-
-	//return 0;
-
-
-	/*********************************************************MAKING IT MC FRIENDLY****************************************************************/
-
+    //TEST: Does overflowing work?
 	short*** Height_Indeces = new short** [NBT_X];
 	for (int i = 0; i < NBT_X; i++) {
 		Height_Indeces[i] = new short* [NBT_Z + 1]();
@@ -1148,7 +1161,11 @@ int main(int argc, char** argv) {
 	delete[] yHeight;
 	delete[] jump;
 
+    std::cout << "FINISHED OVERFLOW FIXING" << std::endl;
+
     psl_helperFunctionRunner(writeLitematic(Layers, NBT_X, NBT_Y, NBT_Z, NBT_XZ));
+
+    //ADD: Make an overflowed image output
 
     //Clean up
 	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {

@@ -3,7 +3,6 @@
 #define NBT_IMPLEMENTATION
 #include "stb_image.h"
 #include "stb_image_write.h"
-//#include "nbt/nbt.h"
 #include "nbt/nbtDriver.h"
 
 #include "Comparison.h"
@@ -26,89 +25,106 @@
 #include <stdio.h>
 #include <time.h>
 #include <iomanip>
+
+#include "psl/psl.h"
+
 #include "mainConsts.h"
 
 //Moved ToLab to 'Conversion' namespace
 //All the nbt related helper functions have been moved to /nbt/nbtDriver
 //Comparisons here have been moved to the 'comparison' namespace.
 
+int parseArguments(int& argc, char** argv) {
+    std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
 
+    if (commandLineArgs.size() == 0) {
+        //ADD: GUI!
+        return 0;
+    }
 
-int main(int argc, char** argv) {
+    if (commandLineArgs.size() < 2 ) {
+        std::cout << "ERROR: Not enough arguments, 2 are required to process an image" << std::endl;
+        return 1;
+    }
 
-    /*Argument Parsing*/ {
-        if (argc == 1) {
+    //Load input image
+    imageIn = stbi_load(commandLineArgs[0].c_str(), &width, &height, &channels, 0);
+    if (imageIn == NULL) {
+        std::cout << "ERROR: Image failed to load (only .png, .jpg, .jpeg files are acceptable)" << std::endl;
+        std::cout << "HERE-> " << commandLineArgs[0] << std::endl;
+        return 1;
+    }
+
+    //Set output image
+    outputName = commandLineArgs[1];
+    std::fstream outTest(outputName);
+    if (outTest) {
+        std::string input;
+        std::cout << "WARNING: " << outputName << " already exists! Would you like to replace it? (Y/N): ";
+        std::cin >> input;
+        if (std::toupper(input.at(0)) != 'Y') {
+            return -1;
+        }
+    }
+
+    bool invalidArgs = false;
+    int i = 2;
+    while(commandLineArgs.size() > i) {
+        std::string arg = commandLineArgs[i];
+        if(i == 0);
+        else if(arg == "--help") {
             std::cout << help_Text << std::endl;
             return 0;
-        }
 
-        imageIn = stbi_load(argv[1], &width, &height, &channels, 0);
-        if (imageIn == NULL) {
-            std::cout << "ERROR: Image failed to load (only .png, .jpg, .jpeg files are acceptable)" << std::endl;
-            std::cout << "HERE-> " << std::string(argv[1]) << std::endl;
-            return 1;
-        }
-        std::cout << "LOADED IMAGE" << std::endl;
-        //ADD: ARGs before image
-        for (int i = 2; i < argc; i++) {
-            std::string arg = argv[i];
-            //ADD: --help
-            if (arg == "--help") {
-                std::cout << help_Text << std::endl;
-                return 0;
-            } else if (arg == "--nodither") {
-                noDither = true;
-            }
-            else if (arg == "--mode") {
-                if (i == argc - 1) {
-                    std::cout << "ERROR: Mode must be given after --mode";
-                    return 1;
-                }
-                //TEST: Change to full arg matching
-                arg = std::string(argv[i + 1]);
-                std::for_each(arg.begin(), arg.end(), [](char & c){
-                    c = ::tolower(c);
-                });
+            //Stair casing mode
+        } else if (arg == "--mode") {
+            i++;
+            arg = commandLineArgs[i];
 
-                if (arg == "flat") {
-                    Mode = flat;
-                }
-                else if (arg == "staircase") {
-                    Mode = staircase;
-                }
-                else if (arg == "ascending") {
-                    Mode = ascending;
-                }
-                else if (arg == "descending") {
-                    Mode = descending;
-                }
-                else if (arg == "unlimited") {
-                    Mode = unlimited;
-                }
-                else {
-                    std::cout << "ERROR: Invalid mode option";
-                    std::cout << "HERE-> " << arg << std::endl;
-                    return 1;
-                }
+            if (arg == "flat") {
+                StairCaseMode = flat;
             }
-            else if (outputName == "output.png") {
-                outputName = arg;
-                std::fstream outTest(outputName);
-                //ADD: Check overwrite every time
-                if (outTest) {
-                    std::string input;
-                    std::cout << "WARNING: " << outputName << " already exists! Would you like to replace it? (Y/N): ";
-                    std::cin >> input;
-                    if (std::toupper(input.at(0)) != 'Y') {
-                        std::cout << "Exiting..." << std::endl;
-                        return 0;
-                    }
-                }
+            else if (arg == "staircase") {
+                StairCaseMode = staircase;
             }
-        }
+            else if (arg == "ascending") {
+                StairCaseMode = ascending;
+            }
+            else if (arg == "descending") {
+                StairCaseMode = descending;
+            }
+            else if (arg == "unlimited") {
+                StairCaseMode = unlimited;
+            }
+            else {
+                std::cout << "ERROR: Invalid mode option" << std::endl;
+                std::cout << "HERE-> " << arg << std::endl;
+                invalidArgs = true;
+            }
 
-        std::cout << "FINISHED PARSING ARGUMENTS" << std::endl;
+        //Dithering
+        } else if (arg == "--nodither") {
+            //ADD: other dithering modes
+            noDither = true;
+
+        } else {
+            std::cout << "ERROR: Invalid argument" << std::endl;
+            std::cout << "HERE-> " << arg << std::endl;
+            invalidArgs = true;
+        }
+        i++;
     }
+
+    if(invalidArgs) {
+        return 1;
+    }
+
+    std::cout << "FINISHED PARSING ARGUMENTS" << std::endl;
+    return -1;
+}
+
+int main(int argc, char** argv) {
+    psl_helperFunctionRunner(parseArguments(argc, argv));
 
     /*Setting.txt Parsing*/ {
         std::fstream Settings;
@@ -132,7 +148,7 @@ int main(int argc, char** argv) {
                     }
                     //TEST: Does removing block types work?
                     BlockTypes[blockID] = line.substr(line.find("minecraft:") + 10);
-                    switch (Mode) {
+                    switch (StairCaseMode) {
                         case flat:
                             AllowedColors[blockID * 4 + 1] = true;
                             break;
@@ -455,7 +471,7 @@ int main(int argc, char** argv) {
 		}
 
 		//Check for and apply height-limit fixes when necessary based on what shade of block color was chosen (staircasing)
-		if (Mode != unlimited) {
+		if (StairCaseMode != unlimited) {
 			switch (colorIndex & 3) {
 			case DOWN: //Staircasing downwards
 				if (prev_heights[width_pos] < 1) {

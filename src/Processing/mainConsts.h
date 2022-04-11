@@ -3,6 +3,7 @@ const int DOWN = 0;
 const int FLAT = 1;
 const int UP = 2;
 
+//ADD: make these controllable from settings.txt
 ColorSpace::Rgb BlockColors[TOTAL_COLORS * 4] = {
         {  89, 125,  39 }, { 109, 153,  48 }, { 127, 178,  56 }, {  67,  94,  29 }, //GRASS:					1
         { 174, 164, 115 }, { 213, 201, 140 }, { 247, 233, 163 }, { 130, 123,  86 }, //SAND:						2
@@ -73,19 +74,21 @@ bool needsSupport[TOTAL_COLORS] = { 0 };
 int TotalBlocksUsed[TOTAL_COLORS + 1] = { 0 };
 
 unsigned char* imageIn;
+//FIX: Specify this on the command line
 std::string outputName = "out.png";
 int width, height, channels;
 
 bool noDither = false;
 bool constMaxHeight = false;
 enum mode{
-    flat,       //0
-    staircase,  //1
-    ascending,  //2
-    descending, //3
-    unlimited   //4
+    none = 0,
+    flat = 1,
+    staircase = 2,
+    ascending = 3,
+    descending = 4,
+    unlimited = 5
 };
-mode Mode = flat;
+mode StairCaseMode = flat;
 int minR = 0;
 int minG = 0;
 int minB = 0;
@@ -129,6 +132,7 @@ int maxB = 255;
 			<< "//      It is suggested to tweak these values for each image until you get what you want." << std::endl\
 			<< "constMaxHeight: false   //if true, blocks will always go to the maximum build height before being grounded. If false, max height will be randomized, creating a dithered effect"
 
+//FIX: This is bound to be wrong
 #define help_Text "Usage: " << argv[0] << " input_image [output] [options]" << std::endl\
 			<< "     [output] can either be an image, .nbt, or .litematica output" << std::endl\
 			<< "     if not provided, default is output.png in same folder as input_image" << std::endl << std::endl\
@@ -137,5 +141,5 @@ int maxB = 255;
 			<< "--mode <mode>	  sets the type of map to create. Options for <mode> are:" << std::endl\
 			<< "		     FLAT, STAIRCASE, ASCENDING, DESCENDING, UNLIMITED" << std::endl\
 			<< "		     default is FLAT" << std::endl\
-			<< "		     UNLIMITED gives access to 4th shade but never outputs a .nbt file"
+			<< "		     UNLIMITED gives access to 4th shade but can't be put into Minecraft"
 

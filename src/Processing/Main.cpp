@@ -34,7 +34,7 @@
 //All the nbt related helper functions have been moved to /nbt/nbtDriver
 //Comparisons here have been moved to the 'comparison' namespace.
 
-int parseArguments(int& argc, char** &argv) {
+int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &noDither, unsigned char* &imageIn, std::string &outputName) {
     std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
 
     if (commandLineArgs.size() == 0) {
@@ -129,7 +129,8 @@ int parseArguments(int& argc, char** &argv) {
     return -1;
 }
 
-int parseSettings() {
+//ADD: Switch this to json
+int parseSettings(stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHeight) {
     //Open the file
     std::fstream Settings;
     Settings.open(SettingsFileName, std::fstream::in);
@@ -269,7 +270,8 @@ int parseSettings() {
     return -1;
 }
 
-int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, unsigned char** &BlockData, int*** &BlocksUsed, int &BLOCKS_USED_HEIGHT, int &BLOCKS_USED_WIDTH) {
+int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, unsigned char** &BlockData, int*** &BlocksUsed, int &BLOCKS_USED_HEIGHT, int &BLOCKS_USED_WIDTH, unsigned char* &imageIn,
+                 stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHeight) {
     ColorSpace::Lab Colors[TOTAL_COLORS * 4];
     for (int i = 0; i < TOTAL_COLORS * 4; i++) {
         ColorSpace::ToLab(BlockColors[i], &Colors[i]);
@@ -565,6 +567,8 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
 
+    //FIX: Make all these prints run on a verbose option.
+
     int tot = 0;
     std::cout << "\nBlocks Used: " << std::endl;
     int terracotta = 0;
@@ -586,6 +590,7 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
             terracotta += TotalBlocksUsed[i];
         }
     }
+
     std::cout << "TOTAL: " << tot / 1000000 << "," << std::setw(3) << tot / 1000 % 1000 << "," << tot % 1000 << std::setw(0) << std::endl << std::endl;
     std::cout << "Terracotta: " << terracotta << std::endl;
     for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
@@ -619,7 +624,7 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
     return -1;
 }
 
-int writeLitematic(std::vector<std::array<short, 3>> *Layers, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ) {
+int writeLitematic(const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, std::vector<std::array<short, 3>>* Layers) {
     std::cout << "WRITING LITEMATIC" << std::endl;
 
     char blockBits = 6;
@@ -764,225 +769,196 @@ int writeLitematic(std::vector<std::array<short, 3>> *Layers, const short& NBT_X
     return -1;
 }
 
-int main(int argc, char** argv) {
-    psl_helperFunctionRunner(parseArguments(argc, argv));
-
-    psl_helperFunctionRunner(parseSettings());
-
-    /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
-
-    //All these are artifacts of moving into helper functions and needing global variables.
-    //FIX: Maybe make these global?
-    const short NBT_X = 384;
-    const short NBT_Y = 256;
-    const short NBT_Z = 384;
-    const int NBT_XZ = NBT_X * (NBT_Z + 1);
-
-    unsigned char **BlockData;
-    int*** BlocksUsed;
-
-    int BLOCKS_USED_HEIGHT = 0;
-    int BLOCKS_USED_WIDTH = 0;
-
-    psl_helperFunctionRunner(reduceColors(argv, NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, BlocksUsed, BLOCKS_USED_HEIGHT, BLOCKS_USED_WIDTH));
-
-	/*********************************************************Prevent height under and overflows for minecraft****************************************************************/
-
+int fixOverflow(const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, unsigned char** &BlockData, std::vector<std::array<short, 3>>* Layers) {
     std::cout << "OVERFLOW FIXING" << std::endl;
 
     //TEST: Does overflowing work?
-	short*** Height_Indeces = new short** [NBT_X];
-	for (int i = 0; i < NBT_X; i++) {
-		Height_Indeces[i] = new short* [NBT_Z + 1]();
-		for (int j = 0; j < NBT_Z + 1; j++)
-			Height_Indeces[i][j] = new short[2]();
-	}
-	std::vector<unsigned char> Clearance[NBT_X];
-	std::vector<std::array<short, 3>> Layers[NBT_Y];
+    short*** Height_Indeces = new short** [NBT_X];
+    for (int i = 0; i < NBT_X; i++) {
+        Height_Indeces[i] = new short* [NBT_Z + 1]();
+        for (int j = 0; j < NBT_Z + 1; j++)
+            Height_Indeces[i][j] = new short[2]();
+    }
+    std::vector<unsigned char> Clearance[NBT_X];
 
+    unsigned char* yHeight = new unsigned char[NBT_X];
+    unsigned char* jump = new unsigned char[NBT_X]();
+    //unsigned char* dist = new unsigned char[NBT_X]();
+    //short* lastDistIndex = new short[NBT_X]();
 
-	unsigned char* yHeight = new unsigned char[NBT_X];
-	unsigned char* jump = new unsigned char[NBT_X]();
-	//unsigned char* dist = new unsigned char[NBT_X]();
-	//short* lastDistIndex = new short[NBT_X]();
+    for (short x = 0; x < NBT_X; x++) {
+        if (x == 1) {
+            int q = 0;
+        }
 
-	for (short x = 0; x < NBT_X; x++) {
-		if (x == 1) {
-			int q = 0;
-		}
+        unsigned char support;
+        switch (BlockData[x][0] & 3) {
+            case DOWN:
+            case FLAT:
+            {
+                jump[x] = 1;
+                bool brk = false;
+                for (short dz = 1; dz < NBT_Z && !brk; dz++) {
+                    jump[x] += (BlockData[x][dz] & 3) == DOWN;
+                    brk = (BlockData[x][dz] & 3) == UP;
+                }
+                if (x == 1) {
+                    int q = 0;
+                }
+                yHeight[x] = jump[x];
+                support = jump[x] + 1;
+                Clearance[x].push_back(254 - support);
+                Height_Indeces[x][0][1] = 0;
+                Height_Indeces[x][1][1] = 0;
+                //Height_Dist[x][0][1] = 254 - support;
+                //DistIndeces[x].push_back(jump[x]);
+                //lastDistIndex[x] = 0;
+            }
+                break;
+            case UP:
+                yHeight[x] = 1;
+                if ((BlockData[x][1] & 3) != UP) {
+                    jump[x] = 2;
+                    bool brk = false;
+                    for (short dz = 2; dz < NBT_Z && !brk; dz++) {
+                        jump[x] += (BlockData[x][dz] & 3) == DOWN;
+                        brk = (BlockData[x][dz] & 3) == UP;
+                    }
+                    yHeight[x] = jump[x];
+                    Clearance[x].push_back(254 - jump[x]);
+                    Height_Indeces[x][0][1] = 1;
+                    Height_Indeces[x][1][1] = 1;
+                    //Height_Dist[x][0][1] = 254 - jump[x];
+                    //lastDistIndex[x] = 1;
+                    //lastDistIndex[x] = 255 - (yHeight[x] + 1);
+                }
+                else {
+                    unsigned char upwards = 1;
+                    bool brk = false;
+                    for (short dz = 1; dz < NBT_Z && !brk; dz++) {
+                        upwards += (BlockData[x][dz] & 3) == UP;
+                        brk = (BlockData[x][dz] & 3) == DOWN;
+                    }
+                    Clearance[x].push_back(254 - upwards);
+                    Height_Indeces[x][0][1] = 1;
+                    Height_Indeces[x][1][1] = 1;
+                    //Height_Dist[x][0][1] = 254 - upwards;
+                }
+                support = 0;
+                break;
+            default:
+                break;
+        }
+        Height_Indeces[x][0][0] = support;
+        Height_Indeces[x][1][0] = yHeight[x];
+        //Height_Dist[x][0][1];
+        //Layers[support].push_back({ x, 0, TOTAL_COLORS << 2 });
+        //Layers[yHeight[x]].push_back({ x, 1, BlockData[x][0] });
+    }
 
-		unsigned char support;
-		switch (BlockData[x][0] & 3) {
-		case DOWN:
-		case FLAT:
-			{
-			jump[x] = 1;
-			bool brk = false;
-			for (short dz = 1; dz < NBT_Z && !brk; dz++) {
-				jump[x] += (BlockData[x][dz] & 3) == DOWN;
-				brk = (BlockData[x][dz] & 3) == UP;
-			}
-			if (x == 1) {
-				int q = 0;
-			}
-			yHeight[x] = jump[x];
-			support = jump[x] + 1;
-			Clearance[x].push_back(254 - support);
-			Height_Indeces[x][0][1] = 0;
-			Height_Indeces[x][1][1] = 0;
-			//Height_Dist[x][0][1] = 254 - support;
-			//DistIndeces[x].push_back(jump[x]);
-			//lastDistIndex[x] = 0;
-			}
-			break;
-		case UP:
-			yHeight[x] = 1;
-			if ((BlockData[x][1] & 3) != UP) {
-				jump[x] = 2;
-				bool brk = false;
-				for (short dz = 2; dz < NBT_Z && !brk; dz++) {
-					jump[x] += (BlockData[x][dz] & 3) == DOWN;
-					brk = (BlockData[x][dz] & 3) == UP;
-				}
-				yHeight[x] = jump[x];
-				Clearance[x].push_back(254 - jump[x]);
-				Height_Indeces[x][0][1] = 1;
-				Height_Indeces[x][1][1] = 1;
-				//Height_Dist[x][0][1] = 254 - jump[x];
-				//lastDistIndex[x] = 1;
-				//lastDistIndex[x] = 255 - (yHeight[x] + 1);
-			}
-			else {
-				unsigned char upwards = 1;
-				bool brk = false;
-				for (short dz = 1; dz < NBT_Z && !brk; dz++) {
-					upwards += (BlockData[x][dz] & 3) == UP;
-					brk = (BlockData[x][dz] & 3) == DOWN;
-				}
-				Clearance[x].push_back(254 - upwards);
-				Height_Indeces[x][0][1] = 1;
-				Height_Indeces[x][1][1] = 1;
-				//Height_Dist[x][0][1] = 254 - upwards;
-			}
-			support = 0;
-			break;
-		default:
-			break;
-		}
-		Height_Indeces[x][0][0] = support;
-		Height_Indeces[x][1][0] = yHeight[x];
-		 //Height_Dist[x][0][1];
-		//Layers[support].push_back({ x, 0, TOTAL_COLORS << 2 });
-		//Layers[yHeight[x]].push_back({ x, 1, BlockData[x][0] });
-	}
+    for (short z = 1; z < NBT_Z; z++) {
+        for (short x = 0; x < NBT_X; x++) {
+            if (x == 383 && z == 156 - 64) {
+                int q = 0;
+            }
+            if (x == 1 && z > 240) {
+                int q = 0;
+            }
+            Height_Indeces[x][z + 1][1] = Height_Indeces[x][z][1];
+            //Height_Dist[x][z + 1][1] = Height_Dist[x][z][1];
+            switch (BlockData[x][z] & 3) {
+                case DOWN:
+                {
+                    Height_Indeces[x][z + 1][1] &= 65534;
+                    jump[x]--;
+                    yHeight[x] = jump[x];
+                    //Height_Dist[x][z][1] = lastDistIndex[x];
+                    bool stairStart = true;
+                    bool brk = false;
+                    for (short dz = 1; z - dz >= 0 && !brk && stairStart; dz--) {
+                        stairStart = (BlockData[x][z - dz] & 3) != DOWN;
+                        brk = (BlockData[x][z - dz] & 3) == UP;
+                    }
+                    if (stairStart) {
+                        unsigned char upwards = yHeight[x];
+                        brk = false;
+                        for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
+                            upwards += (BlockData[x][z + dz] & 3) == UP;
+                            brk = (BlockData[x][z + dz] & 3) == DOWN;
+                        }
+                        Clearance[x].push_back(254 - upwards);
+                        Height_Indeces[x][z + 1][1] += 2;
+                        //Height_Dist[x][z + 1][1] = 254 - upwards;
+                    }
+                }
+                    break;
+                case UP:
+                {
+                    Height_Indeces[x][z + 1][1] |= 1;
+                    yHeight[x]++;
+                    jump[x] = 0;
+                    bool brk = false;
+                    for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
+                        jump[x] += (BlockData[x][z + dz] & 3) == DOWN;
+                        brk = (BlockData[x][z + dz] & 3) == UP;
+                    }
+                    if (x == 1) {
+                        int q = z;
+                    }
+                    if (jump[x] != 0) {
+                        Height_Indeces[x][z + 1][1] &= 65534;
+                    }
+                    if (jump[x] > yHeight[x]) {
+                        yHeight[x] = jump[x];
+                        Clearance[x].push_back(254 - yHeight[x]);
+                        Height_Indeces[x][z + 1][1] += 2;
+                        //Height_Dist[x][z + 1][1] = 254 - yHeight[x];
+                    }
 
-	std::cout << "hi2" << std::endl;
+                    bool stairStart = true;
+                    brk = false;
+                    for (short dz = 1; z - dz >= 0 && !brk && stairStart; dz--) {
+                        stairStart = (BlockData[x][z - dz] & 3) != UP;
+                        brk = (BlockData[x][z - dz] & 3) == DOWN;
+                    }
+                    if (stairStart) {
+                        unsigned char upwards = yHeight[x];
+                        brk = false;
+                        for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
+                            upwards += (BlockData[x][z + dz] & 3) == UP;
+                            brk = (BlockData[x][z + dz] & 3) == DOWN;
+                        }
+                        Clearance[x].push_back(254 - upwards);
+                        Height_Indeces[x][z + 1][1] += 2;
+                        //Height_Dist[x][z + 1][1] = 254 - upwards;
+                    }
+                    //lastDistIndex[x] = 255 - (yHeight[x] + 1);
+                }
+                    break;
+                default:
+                    break;
+            }
+            Height_Indeces[x][z + 1][0] = yHeight[x];
+            //Height_Dist[x][z][1] = lastDistIndex[x];
+            //Layers[yHeight[x]].push_back({ x, (short)(z + 1), BlockData[x][z] });
+        }
+    }
 
-	for (short z = 1; z < NBT_Z; z++) {
-		for (short x = 0; x < NBT_X; x++) {
-			if (x == 383 && z == 156 - 64) {
-				int q = 0;
-			}
-			if (x == 1 && z > 240) {
-				int q = 0;
-			}
-			Height_Indeces[x][z + 1][1] = Height_Indeces[x][z][1];
-			//Height_Dist[x][z + 1][1] = Height_Dist[x][z][1];
-			switch (BlockData[x][z] & 3) {
-			case DOWN:
-				{
-				Height_Indeces[x][z + 1][1] &= 65534;
-				jump[x]--;
-				yHeight[x] = jump[x];
-				//Height_Dist[x][z][1] = lastDistIndex[x];
-				bool stairStart = true;
-				bool brk = false;
-				for (short dz = 1; z - dz >= 0 && !brk && stairStart; dz--) {
-					stairStart = (BlockData[x][z - dz] & 3) != DOWN;
-					brk = (BlockData[x][z - dz] & 3) == UP;
-				}
-				if (stairStart) {
-					unsigned char upwards = yHeight[x];
-					brk = false;
-					for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
-						upwards += (BlockData[x][z + dz] & 3) == UP;
-						brk = (BlockData[x][z + dz] & 3) == DOWN;
-					}
-					Clearance[x].push_back(254 - upwards);
-					Height_Indeces[x][z + 1][1] += 2;
-					//Height_Dist[x][z + 1][1] = 254 - upwards;
-				}
-				}
-				break;
-			case UP:
-				{
-				Height_Indeces[x][z + 1][1] |= 1;
-				yHeight[x]++;
-				jump[x] = 0;
-				bool brk = false;
-				for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
-					jump[x] += (BlockData[x][z + dz] & 3) == DOWN;
-					brk = (BlockData[x][z + dz] & 3) == UP;
-				}
-				if (x == 1) {
-					int q = z;
-				}
-				if (jump[x] != 0) {
-					Height_Indeces[x][z + 1][1] &= 65534;
-				}
-				if (jump[x] > yHeight[x]) {
-					yHeight[x] = jump[x];
-					Clearance[x].push_back(254 - yHeight[x]);
-					Height_Indeces[x][z + 1][1] += 2;
-					//Height_Dist[x][z + 1][1] = 254 - yHeight[x];
-				}
-				
-				bool stairStart = true;
-				brk = false;
-				for (short dz = 1; z - dz >= 0 && !brk && stairStart; dz--) {
-					stairStart = (BlockData[x][z - dz] & 3) != UP;
-					brk = (BlockData[x][z - dz] & 3) == DOWN;
-				}
-				if (stairStart) {
-					unsigned char upwards = yHeight[x];
-					brk = false;
-					for (short dz = 1; z + dz < NBT_Z && !brk; dz++) {
-						upwards += (BlockData[x][z + dz] & 3) == UP;
-						brk = (BlockData[x][z + dz] & 3) == DOWN;
-					}
-					Clearance[x].push_back(254 - upwards);
-					Height_Indeces[x][z + 1][1] += 2;
-					//Height_Dist[x][z + 1][1] = 254 - upwards;
-				}
-				//lastDistIndex[x] = 255 - (yHeight[x] + 1);
-				}
-				break;
-			default:
-				break;
-			}
-			Height_Indeces[x][z + 1][0] = yHeight[x];
-			//Height_Dist[x][z][1] = lastDistIndex[x];
-			//Layers[yHeight[x]].push_back({ x, (short)(z + 1), BlockData[x][z] });
-		}
-	}
+    unsigned char* addends = new unsigned char[NBT_X]();
 
-	std::cout << "hi3" << std::endl;
-
-	unsigned char* addends = new unsigned char[NBT_X]();
-
-	/*for (short x = 0; x < NBT_X; x++) {
-		bool upwards = true;
-		bool brk = false;
-		for (short dz = 1; dz <= NBT_Z && !brk && upwards; dz++) {
-			upwards = (BlockData[x][dz] & 3) != DOWN;
-			brk = (BlockData[x][dz] & 3) == UP;
-		}
-		if (upwards) {
-			unsigned char currHeight = Height_Indeces[x][0][0];
-			unsigned char currClearance = Clearance[x].at(Height_Indeces[x][0][1]);
-			unsigned char max = currHeight;
-			for (int i = -3; i < 0; i++) {
-				if (x + i >= 0 && /*(z == NBT_Z || (BlockData[x][z + 1] & 3) == (BlockData[x + i][z + 1] & 3)) && *//* Height_Indeces[x + i][0][0] > max&& Height_Indeces[x + i][0][0] - currHeight <= currClearance) {
+    /*for (short x = 0; x < NBT_X; x++) {
+        bool upwards = true;
+        bool brk = false;
+        for (short dz = 1; dz <= NBT_Z && !brk && upwards; dz++) {
+            upwards = (BlockData[x][dz] & 3) != DOWN;
+            brk = (BlockData[x][dz] & 3) == UP;
+        }
+        if (upwards) {
+            unsigned char currHeight = Height_Indeces[x][0][0];
+            unsigned char currClearance = Clearance[x].at(Height_Indeces[x][0][1]);
+            unsigned char max = currHeight;
+            for (int i = -3; i < 0; i++) {
+                if (x + i >= 0 && /*(z == NBT_Z || (BlockData[x][z + 1] & 3) == (BlockData[x + i][z + 1] & 3)) && *//* Height_Indeces[x + i][0][0] > max&& Height_Indeces[x + i][0][0] - currHeight <= currClearance) {
 					max = Height_Indeces[x + i][0][0];
 				}
 			}
@@ -1001,179 +977,222 @@ int main(int argc, char** argv) {
 			}
 		}
 	}*/
-	//unsigned char* addends = new unsigned char[NBT_X]();
-	/*for (short x = 0; x < NBT_X; x++) {
-		unsigned char currHeight = Height_Dist[x][0][0];
-		unsigned char currDist = Height_Dist[x][0][1];
-		unsigned char max = currHeight;
-		for (int i = -3; i < 0; i++) {
-			if (x + i >= 0 && Height_Dist[x + i][0][0] > max && Height_Dist[x + i][0][0] - currHeight >= currDist) {
-				max = Height_Dist[x + i][0][0];
-			}
-		}
-		for (int i = 1; i < 4; i++) {
-			if (x + i < NBT_X && Height_Dist[x + i][0][0] > max && Height_Dist[x + i][0][0] - currHeight >= currDist) {
-				max = Height_Dist[x + i][0][0];
-			}
-		}
-		Height_Dist[x][0][0] = max;
-		Height_Dist[x][0][1] = currDist - (max - currHeight);
-		//addends[x] = Height_Dist[x][0][1];
-	}*/
-	for (short z = 0; z <= NBT_Z; z++) {
-		for (short x = 0; x < NBT_X; x++) {
-			/*bool upwards = true;
-			bool brk = false;
-			for (short dz = 1; z + dz <= NBT_Z && !brk && upwards; dz++) {
-				upwards = (BlockData[x][z + dz] & 3) != DOWN;
-				brk = (BlockData[x][z + dz] & 3) == UP;
-			}*/
-			if ((Height_Indeces[x][z][1] & 1) == 1) { //upwards) {
-				/*if ((Height_Indeces[x][z][1] & 1) != 1) {
-					int q = x + z;
-				}*/
-				unsigned char currHeight = Height_Indeces[x][z][0] + addends[x];
-				unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
-				//std::cout << "(" << x << "," << z << ")  " << (int) currHeight << " : " << (int) currClearence << std::endl;
-				//unsigned char currDist = Height_Dist[x][z][1];
-				unsigned char max = currHeight;
-				for (int i = -3; i < 0; i++) {
-					if (x + i >= 0 && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				for (int i = 1; i < 4; i++) {
-					if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				Height_Indeces[x][z][0] = max;
-				//std::cout << " -- went to: " << max << std::endl;
-				if (z != NBT_Z) {
-					addends[x] += max - currHeight;
-					if (x == 1) {
-						int q = z;
-					}
-					Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
-					//Height_Indeces[x][z + 1][0] += max - currHeight;
-					//Height_Dist[x][z + 1][1] = currDist - (max - currHeight);
-					if ((Height_Indeces[x][z][1] >> 1) != (Height_Indeces[x][z + 1][1] >> 1)) {
-						addends[x] = 0;
-					}
-				}
-			}
-		}
-		for (short x = NBT_X - 1; x >= 0; x--) {
-			if ((Height_Indeces[x][z][1] & 1) == 1) {
-				unsigned char currHeight = Height_Indeces[x][z][0];
-				unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
-				unsigned char max = currHeight;
-				for (int i = 1; i < 4; i++) {
-					if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				Height_Indeces[x][z][0] = max;
-				addends[x] += max - currHeight;
-				Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
-			}
-		}
-	}
-	
-	std::cout << "hi4" << std::endl;
+    //unsigned char* addends = new unsigned char[NBT_X]();
+    /*for (short x = 0; x < NBT_X; x++) {
+        unsigned char currHeight = Height_Dist[x][0][0];
+        unsigned char currDist = Height_Dist[x][0][1];
+        unsigned char max = currHeight;
+        for (int i = -3; i < 0; i++) {
+            if (x + i >= 0 && Height_Dist[x + i][0][0] > max && Height_Dist[x + i][0][0] - currHeight >= currDist) {
+                max = Height_Dist[x + i][0][0];
+            }
+        }
+        for (int i = 1; i < 4; i++) {
+            if (x + i < NBT_X && Height_Dist[x + i][0][0] > max && Height_Dist[x + i][0][0] - currHeight >= currDist) {
+                max = Height_Dist[x + i][0][0];
+            }
+        }
+        Height_Dist[x][0][0] = max;
+        Height_Dist[x][0][1] = currDist - (max - currHeight);
+        //addends[x] = Height_Dist[x][0][1];
+    }*/
+    for (short z = 0; z <= NBT_Z; z++) {
+        for (short x = 0; x < NBT_X; x++) {
+            /*bool upwards = true;
+            bool brk = false;
+            for (short dz = 1; z + dz <= NBT_Z && !brk && upwards; dz++) {
+                upwards = (BlockData[x][z + dz] & 3) != DOWN;
+                brk = (BlockData[x][z + dz] & 3) == UP;
+            }*/
+            if ((Height_Indeces[x][z][1] & 1) == 1) { //upwards) {
+                /*if ((Height_Indeces[x][z][1] & 1) != 1) {
+                    int q = x + z;
+                }*/
+                unsigned char currHeight = Height_Indeces[x][z][0] + addends[x];
+                unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
+                //std::cout << "(" << x << "," << z << ")  " << (int) currHeight << " : " << (int) currClearence << std::endl;
+                //unsigned char currDist = Height_Dist[x][z][1];
+                unsigned char max = currHeight;
+                for (int i = -3; i < 0; i++) {
+                    if (x + i >= 0 && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                for (int i = 1; i < 4; i++) {
+                    if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                Height_Indeces[x][z][0] = max;
+                //std::cout << " -- went to: " << max << std::endl;
+                if (z != NBT_Z) {
+                    addends[x] += max - currHeight;
+                    if (x == 1) {
+                        int q = z;
+                    }
+                    Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
+                    //Height_Indeces[x][z + 1][0] += max - currHeight;
+                    //Height_Dist[x][z + 1][1] = currDist - (max - currHeight);
+                    if ((Height_Indeces[x][z][1] >> 1) != (Height_Indeces[x][z + 1][1] >> 1)) {
+                        addends[x] = 0;
+                    }
+                }
+            }
+        }
+        for (short x = NBT_X - 1; x >= 0; x--) {
+            if ((Height_Indeces[x][z][1] & 1) == 1) {
+                unsigned char currHeight = Height_Indeces[x][z][0];
+                unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
+                unsigned char max = currHeight;
+                for (int i = 1; i < 4; i++) {
+                    if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 1 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                Height_Indeces[x][z][0] = max;
+                addends[x] += max - currHeight;
+                Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
+            }
+        }
+    }
 
-	delete[] addends;
-	//unsigned char* addends = new unsigned char[NBT_X]();
+    delete[] addends;
+    //unsigned char* addends = new unsigned char[NBT_X]();
 
-	for (short z = NBT_Z; z >= 0; z--) {
-		for (short x = 0; x < NBT_X; x++) {
-			if ((Height_Indeces[x][z][1] & 1) == 0) {
-				unsigned char currHeight = Height_Indeces[x][z][0] + addends[x];
-				unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
-				unsigned char max = currHeight;
-				for (int i = -3; i < 0; i++) {
-					if (x + i >= 0 && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				for (int i = 1; i < 4; i++) {
-					if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				Height_Indeces[x][z][0] = max;
-				if (z != 0) {
-					addends[x] += max - currHeight;
-					Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
-					if ((Height_Indeces[x][z][1] >> 1) != (Height_Indeces[x][z - 1][1] >> 1)) {
-						addends[x] = 0;
-					}
-				}
-			}
-		}
-		for (short x = NBT_X - 1; x >= 0; x--) {
-			if ((Height_Indeces[x][z][1] & 1) == 0) {
-				unsigned char currHeight = Height_Indeces[x][z][0];
-				unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
-				unsigned char max = currHeight;
-				for (int i = 1; i < 4; i++) {
-					if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
-						max = Height_Indeces[x + i][z][0];
-					}
-				}
-				Height_Indeces[x][z][0] = max;
-				addends[x] += max - currHeight;
-				Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
-			}
-		}
-	}
+    for (short z = NBT_Z; z >= 0; z--) {
+        for (short x = 0; x < NBT_X; x++) {
+            if ((Height_Indeces[x][z][1] & 1) == 0) {
+                unsigned char currHeight = Height_Indeces[x][z][0] + addends[x];
+                unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
+                unsigned char max = currHeight;
+                for (int i = -3; i < 0; i++) {
+                    if (x + i >= 0 && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                for (int i = 1; i < 4; i++) {
+                    if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                Height_Indeces[x][z][0] = max;
+                if (z != 0) {
+                    addends[x] += max - currHeight;
+                    Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
+                    if ((Height_Indeces[x][z][1] >> 1) != (Height_Indeces[x][z - 1][1] >> 1)) {
+                        addends[x] = 0;
+                    }
+                }
+            }
+        }
+        for (short x = NBT_X - 1; x >= 0; x--) {
+            if ((Height_Indeces[x][z][1] & 1) == 0) {
+                unsigned char currHeight = Height_Indeces[x][z][0];
+                unsigned char currClearence = Clearance[x].at(Height_Indeces[x][z][1] >> 1);
+                unsigned char max = currHeight;
+                for (int i = 1; i < 4; i++) {
+                    if (x + i < NBT_X && (Height_Indeces[x + i][z][1] & 1) == 0 && Height_Indeces[x + i][z][0] > max && Height_Indeces[x + i][z][0] - currHeight <= currClearence) {
+                        max = Height_Indeces[x + i][z][0];
+                    }
+                }
+                Height_Indeces[x][z][0] = max;
+                addends[x] += max - currHeight;
+                Clearance[x].at(Height_Indeces[x][z][1] >> 1) -= max - currHeight;
+            }
+        }
+    }
 
-	/*for (int z = 0; z <= NBT_Z; z++) {
-		for (int x = 0; x < NBT_X; x++) {
-			Height_Indeces[x][z][0] = Clearance[x][Height_Indeces[x][z][1]];
-		}
-	}
+    /*for (int z = 0; z <= NBT_Z; z++) {
+        for (int x = 0; x < NBT_X; x++) {
+            Height_Indeces[x][z][0] = Clearance[x][Height_Indeces[x][z][1]];
+        }
+    }
 
-	/*std::cout << "at 155: " << "(height: " << (int)Height_Dist[383][155 - 63][0] << "), (dist: " << (int)Height_Dist[383][155 - 63][1] << ")" << std::endl;
-	std::cout << "at 156: " << "(height: " << (int)Height_Dist[383][156-63][0] << "), (dist: " << (int)Height_Dist[383][156 - 63][1] << ")" << std::endl;
-	int repeat = Height_Dist[383][0][1];
-	std::cout << "------HEIGHT_DIST------" << std::endl << std::endl;
-	std::cout << "at 63: " << "(height: " << (int) Height_Dist[383][0][0] << "), (dist: " << repeat << ")" << std::endl;
-	for (int i = 1; i < NBT_Z + 1; i++) {
-		if (Height_Dist[383][i][1] != repeat) {
-			repeat = Height_Dist[383][i][1];
-			std::cout << "at " << i + 63 << ": " << "(height: " << (int) Height_Dist[383][i][0] << "), (dist: " << repeat << ")" << std::endl;
-		}
-	}
-	std::cout << "\n\n";*/
+    /*std::cout << "at 155: " << "(height: " << (int)Height_Dist[383][155 - 63][0] << "), (dist: " << (int)Height_Dist[383][155 - 63][1] << ")" << std::endl;
+    std::cout << "at 156: " << "(height: " << (int)Height_Dist[383][156-63][0] << "), (dist: " << (int)Height_Dist[383][156 - 63][1] << ")" << std::endl;
+    int repeat = Height_Dist[383][0][1];
+    std::cout << "------HEIGHT_DIST------" << std::endl << std::endl;
+    std::cout << "at 63: " << "(height: " << (int) Height_Dist[383][0][0] << "), (dist: " << repeat << ")" << std::endl;
+    for (int i = 1; i < NBT_Z + 1; i++) {
+        if (Height_Dist[383][i][1] != repeat) {
+            repeat = Height_Dist[383][i][1];
+            std::cout << "at " << i + 63 << ": " << "(height: " << (int) Height_Dist[383][i][0] << "), (dist: " << repeat << ")" << std::endl;
+        }
+    }
+    std::cout << "\n\n";*/
 
-	std::cout << "hi6" << std::endl;
-	
-	for (short x = 0; x < NBT_X; x++) {
-		Layers[Height_Indeces[x][0][0]].push_back({ x, 0, (TOTAL_COLORS << 2)});
-	}
-	for (short z = 1; z < NBT_Z + 1; z++) {
-		for (short x = 0; x < NBT_X; x++) {
-			Layers[Height_Indeces[x][z][0]].push_back({ x, z, BlockData[x][z + 1] });
-		}
-	}
+    for (short x = 0; x < NBT_X; x++) {
+        Layers[Height_Indeces[x][0][0]].push_back({ x, 0, (TOTAL_COLORS << 2)});
+    }
+    for (short z = 1; z < NBT_Z + 1; z++) {
+        for (short x = 0; x < NBT_X; x++) {
+            Layers[Height_Indeces[x][z][0]].push_back({ x, z, BlockData[x][z + 1] });
+        }
+    }
 
-	delete[] yHeight;
-	delete[] jump;
+    delete[] yHeight;
+    delete[] jump;
 
     std::cout << "FINISHED OVERFLOW FIXING" << std::endl;
 
-    psl_helperFunctionRunner(writeLitematic(Layers, NBT_X, NBT_Y, NBT_Z, NBT_XZ));
+    return -1;
+}
+
+int main(int argc, char** argv) {
+    /*********************************************************USER INPUT PARSING****************************************************************/
+
+    //Config
+    bool noDither = false;
+    //TEST: What does this do?
+    bool constMaxHeight = false;
+    std::string outputName = "out.png";
+    stairCaseMode StairCaseMode = flat;
+
+    //Input data
+    unsigned char* imageIn;
+
+    psl_helperFunctionRunner(parseArguments(argc, argv, StairCaseMode, noDither, imageIn, outputName));
+
+    //ADD: Make this parse json because I can do more stuff with it.
+    psl_helperFunctionRunner(parseSettings(StairCaseMode, noDither, constMaxHeight));
+
+    /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
+
+    //FIX: Make these dynamic
+    //Image sizes?
+    const short NBT_X = 512;
+    const short NBT_Y = 256;
+    const short NBT_Z = 511;
+    const int NBT_XZ = NBT_X * (NBT_Z + 1);
+
+    unsigned char **BlockData;
+    int*** BlocksUsed;
+
+    int BLOCKS_USED_HEIGHT = 0;
+    int BLOCKS_USED_WIDTH = 0;
+
+    //FIX this doesn't load.
+    psl_helperFunctionRunner(reduceColors(argv, NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, BlocksUsed, BLOCKS_USED_HEIGHT, BLOCKS_USED_WIDTH, imageIn, StairCaseMode, noDither, constMaxHeight));
+
+    /*********************************************************Prevent height under and overflows for minecraft****************************************************************/
+
+    std::vector<std::array<short, 3>> *Layers = new std::vector<std::array<short, 3>>[NBT_Y];
 
     //ADD: Make an overflowed image output
+    psl_helperFunctionRunner(fixOverflow(NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, Layers))
 
-    //Clean up
+    /*********************************************************Write out litematic****************************************************************/
+    //FIX: This won't load into mc
+    psl_helperFunctionRunner(writeLitematic(NBT_X, NBT_Y, NBT_Z, NBT_XZ, Layers));
+
+    /*********************************************************Clean up****************************************************************/
 	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
 		for (int j = 0; j < BLOCKS_USED_WIDTH; j++)
 			delete[] BlocksUsed[i][j];
 		delete[] BlocksUsed[i];
 	}
 	delete[] BlocksUsed;
+    delete[] Layers;
 
 	return 0;
 }

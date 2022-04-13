@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(MapArtMaker)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS)
+
 option(BUILD_GUI "Enable building the GUI" ON)
 option(BUILD_PROCESSING "Enable building the Processing part" ON)
 

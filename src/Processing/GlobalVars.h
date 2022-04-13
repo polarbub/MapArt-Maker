@@ -1,3 +1,4 @@
+//ADD: Make this dynamic
 const int TOTAL_COLORS = 61;
 const int DOWN = 0;
 const int FLAT = 1;
@@ -73,13 +74,8 @@ bool AllowedColors[TOTAL_COLORS * 4] = { 0 };
 bool needsSupport[TOTAL_COLORS] = { 0 };
 int TotalBlocksUsed[TOTAL_COLORS + 1] = { 0 };
 
-unsigned char* imageIn;
-//FIX: Specify this on the command line
-std::string outputName = "out.png";
 int width, height, channels;
 
-bool noDither = false;
-bool constMaxHeight = false;
 enum stairCaseMode {
     none = 0,
     flat = 1,
@@ -88,7 +84,7 @@ enum stairCaseMode {
     descending = 4,
     unlimited = 5
 };
-stairCaseMode StairCaseMode = flat;
+
 int minR = 0;
 int minG = 0;
 int minB = 0;

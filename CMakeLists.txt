@@ -6,6 +6,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS)
 option(BUILD_GUI "Enable building the GUI" ON)
 option(BUILD_PROCESSING "Enable building the Processing part" ON)
 
+#set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Release")
+
 if(BUILD_GUI OR BUILD_PROCESSING)
     #Include headers for PSL
     include_directories("${CMAKE_SOURCE_DIR}/src/libraries/PSL/include")

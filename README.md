@@ -8,7 +8,7 @@ All code is in `src`.
 
 `GUI` is polarbub's GUI
 
-`libraries` all the libraries used. PSL is 'polar standard library' dm me if you need access
+`libraries` all the libraries used. PSL is `polar standard library`.
 
 ## Build System
 I'm using cmake because it's somewhat cross-platform.

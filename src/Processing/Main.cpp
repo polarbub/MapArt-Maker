@@ -26,15 +26,17 @@
 #include <time.h>
 #include <iomanip>
 
+#include "json.hpp"
+
 #include "psl/psl.h"
 
-#include "GlobalVars.h"
+#include "mainConsts.h"
 
 //Moved ToLab to 'Conversion' namespace
 //All the nbt related helper functions have been moved to /nbt/nbtDriver
 //Comparisons here have been moved to the 'comparison' namespace.
 
-int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &noDither, unsigned char* &imageIn, std::string &outputName) {
+int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, unsigned char* &imageIn, std::string &outputName, ditherMode &DitherMode, int &width, int &height, int &bitsPerPixel, std::string &SettingsFileName) {
     std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
 
     if (commandLineArgs.size() == 0) {
@@ -48,7 +50,7 @@ int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &
     }
 
     //Load input image
-    imageIn = stbi_load(commandLineArgs[0].c_str(), &width, &height, &channels, 0);
+    imageIn = stbi_load(commandLineArgs[0].c_str(), &width , &height, &bitsPerPixel, 0);
     if (imageIn == NULL) {
         std::cout << "ERROR: Image failed to load (only .png, .jpg, .jpeg files are acceptable)" << std::endl;
         std::cout << "HERE-> " << commandLineArgs[0] << std::endl;
@@ -82,19 +84,19 @@ int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &
             arg = commandLineArgs[i];
 
             if (arg == "flat") {
-                StairCaseMode = flat;
+                StairCaseMode = stairCaseMode::flat;
             }
             else if (arg == "staircase") {
-                StairCaseMode = staircase;
+                StairCaseMode = stairCaseMode::staircase;
             }
             else if (arg == "ascending") {
-                StairCaseMode = ascending;
+                StairCaseMode = stairCaseMode::ascending;
             }
             else if (arg == "descending") {
-                StairCaseMode = descending;
+                StairCaseMode = stairCaseMode::descending;
             }
             else if (arg == "unlimited") {
-                StairCaseMode = unlimited;
+                StairCaseMode = stairCaseMode::unlimited;
             }
             else {
                 std::cout << "ERROR: Invalid mode option" << std::endl;
@@ -102,17 +104,23 @@ int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &
                 invalidArgs = true;
             }
 
-        //Dithering
-        } else if (arg == "--nodither") {
-            //ADD: other dithering modes
-            noDither = true;
+        } else if (arg == "--ditherMode") {
+            i++;
+            arg = commandLineArgs[i];
 
-        //ADD: This to help text
+            //ADD: other dithering modes
+            if (arg == "none") {
+                DitherMode = ditherMode::none;
+            } else if (arg == "floyd-steinberg") {
+                DitherMode = ditherMode::Floyd_Steinberg;
+            }
+
         } else if (arg == "--config") {
             i++;
             arg = commandLineArgs[i];
             SettingsFileName = arg;
 
+            //ADD: ConstMaxHight
         } else {
             std::cout << "ERROR: Invalid argument" << std::endl;
             std::cout << "HERE-> " << arg << std::endl;
@@ -130,7 +138,7 @@ int parseArguments(int& argc, char** &argv, stairCaseMode &StairCaseMode, bool &
 }
 
 //ADD: Switch this to json
-int parseSettings(stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHeight) {
+int parseSettings(stairCaseMode &StairCaseMode, bool &constMaxHeight, std::string &SettingsFileName) {
     //Open the file
     std::fstream Settings;
     Settings.open(SettingsFileName, std::fstream::in);
@@ -157,23 +165,23 @@ int parseSettings(stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHe
                 //TEST: Does removing block types work?
                 BlockTypes[blockID] = line.substr(line.find("minecraft:") + 10);
                 switch (StairCaseMode) {
-                    case flat:
+                    case stairCaseMode::flat:
                         AllowedColors[blockID * 4 + 1] = true;
                         break;
-                    case staircase:
+                    case stairCaseMode::staircase:
                         AllowedColors[blockID * 4 + 0] = true;
                         AllowedColors[blockID * 4 + 1] = true;
                         AllowedColors[blockID * 4 + 2] = true;
                         break;
-                    case ascending:
+                    case stairCaseMode::ascending:
                         AllowedColors[blockID * 4 + 1] = true;
                         AllowedColors[blockID * 4 + 2] = true;
                         break;
-                    case descending:
+                    case stairCaseMode::descending:
                         AllowedColors[blockID * 4 + 0] = true;
                         AllowedColors[blockID * 4 + 1] = true;
                         break;
-                    case unlimited:
+                    case stairCaseMode::unlimited:
                         AllowedColors[blockID * 4 + 0] = true;
                         AllowedColors[blockID * 4 + 1] = true;
                         AllowedColors[blockID * 4 + 2] = true;
@@ -271,7 +279,8 @@ int parseSettings(stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHe
 }
 
 int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const short& NBT_Z, const int& NBT_XZ, unsigned char** &BlockData, int*** &BlocksUsed, int &BLOCKS_USED_HEIGHT, int &BLOCKS_USED_WIDTH, unsigned char* &imageIn,
-                 stairCaseMode &StairCaseMode, bool &noDither, bool &constMaxHeight) {
+                 stairCaseMode &StairCaseMode, ditherMode &DitherMode, bool &constMaxHeight, int &width, int &height, int &bitsPerPixel) {
+
     ColorSpace::Lab Colors[TOTAL_COLORS * 4];
     for (int i = 0; i < TOTAL_COLORS * 4; i++) {
         ColorSpace::ToLab(BlockColors[i], &Colors[i]);
@@ -279,7 +288,7 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
 
     const int HEIGHT = height;
     const int WIDTH = width;
-    const size_t sizeIn = WIDTH * HEIGHT * channels;
+    const size_t sizeIn = WIDTH * HEIGHT * bitsPerPixel;
     const size_t sizeOut = WIDTH * HEIGHT * 3;
     unsigned char* imageOut = new unsigned char[sizeOut];
 
@@ -380,7 +389,7 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
     int qs = 0;
 
     //loop from the start of the input image to the end, copying RGB values over to the output image after altering them based on the algorithm
-    for (unsigned char* p = imageIn, *pg = imageOut; p != imageIn + sizeIn; p += channels, pg += 3, pos++) {
+    for (unsigned char* p = imageIn, *pg = imageOut; p != imageIn + sizeIn; p += bitsPerPixel, pg += 3, pos++) {
         /*qs++;
         if (qs % 10000 == 0) {
             std::cout << qs << std::endl;
@@ -478,7 +487,7 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
         }
 
         //Check for and apply height-limit fixes when necessary based on what shade of block color was chosen (staircasing)
-        if (StairCaseMode != unlimited) {
+        if (StairCaseMode != stairCaseMode::unlimited) {
             switch (colorIndex & 3) {
                 case DOWN: //Staircasing downwards
                     if (prev_heights[width_pos] < 1) {
@@ -532,11 +541,13 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
         ErrB = (b - NewColor.b);
 
         //Apply the dithering based on the dithering algorithm chosen and the RGB errors found above
-        if (!noDither) {
+        //FIX: Make all the dithering algorithms run of the struct not DitherChosen.
+        if (DitherMode != ditherMode::none) {
             for (int i = 1; i < DitherSize; i++) {
-                if (width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) >= 0 && width_pos + DitheringAlgorithms.at(DitherChosen).at(i).at(1) < WIDTH) {
-                    int new_pos = pos + DitheringAlgorithms.at(DitherChosen).at(i).at(0);
-                    short multiply = DitheringAlgorithms.at(DitherChosen).at(i).at(2);
+                std::vector<double> DitherChosenData = DitheringAlgorithms[DitherChosen][i];
+                if (width_pos + DitherChosenData[1] >= 0 && width_pos + DitherChosenData[1] < WIDTH) {
+                    int new_pos = pos + DitherChosenData[0];
+                    short multiply = DitherChosenData[2];
                     ErrorsR[new_pos] += (ErrR * multiply) / Divisor;
                     ErrorsG[new_pos] += (ErrG * multiply) / Divisor;
                     ErrorsB[new_pos] += (ErrB * multiply) / Divisor;
@@ -620,6 +631,342 @@ int reduceColors(char** argv, const short& NBT_X, const short& NBT_Y, const shor
     //ADD: Switch this to specified output image
     std::string out = "First.png";
     stbi_write_png(out.c_str(), width, height, 3, imageOut, 3 * width);
+
+    return -1;
+}
+
+#define json nlohmann::json
+
+struct color {
+    uchar r;
+    uchar g;
+    uchar b;
+};
+#define pixel color
+
+struct blockcolor {
+    std::string blockName;
+    bool needsSupport;
+    color Color;
+};
+
+int parseJSONSettings(std::string FileName, std::vector<blockcolor> &blockColors) {
+    //Open the file
+    std::fstream Settings;
+    Settings.open(FileName, std::fstream::in);
+    //Check if the file is there
+    if (!Settings) {
+        //Generate new file if not
+        Settings.open(FileName, std::fstream::app);
+        Settings << settings_Text << std::flush;
+        Settings.close();
+        Settings.open(FileName, std::fstream::in);
+    }
+
+    json settingJsonContent;
+    Settings >> settingJsonContent;
+
+    json colors = settingJsonContent["colors"];
+
+    int i = 1;
+    for(json color : colors) {
+        if(color.size() < 4) {
+            std::cout << "ERROR: Incorrect syntax in settings file. Color " << i << " is malformed and doesn't have four data points" << std::endl;
+            std::cout << "HERE-> " << color << std::endl;
+            return 1;
+        }
+
+        blockcolor blockColor;
+        blockColor.Color.r = color[0];
+        blockColor.Color.g = color[1];
+        blockColor.Color.b = color[2];
+
+        json colorMetaData = color[3];
+
+        auto rawBlockID = colorMetaData.find("block ID");
+        if (rawBlockID == colorMetaData.end()) {
+            std::cout << "ERROR: Incorrect syntax in settings file. 'block ID' for color " << i << " is missing" << std::endl;
+            std::cout << "HERE-> " << colorMetaData << std::endl;
+            return 1;
+        }
+
+        auto rawNeedsSupport = colorMetaData.find("needs support");
+        if (rawNeedsSupport == colorMetaData.end()) {
+            std::cout << "ERROR: Incorrect syntax in settings file. 'needs support' for color " << i << " is missing" << std::endl;
+            std::cout << "HERE-> " << colorMetaData << std::endl;
+            return 1;
+        }
+
+        blockColor.needsSupport = *rawNeedsSupport;
+        blockColor.blockName = *rawBlockID;
+
+        blockColors.push_back(blockColor);
+        i++;
+    }
+
+    return -1;
+}
+
+class image {
+public:
+    std::vector<std::vector<pixel>> image;
+
+    int getHeight() {
+       return image.size();
+    }
+
+    int getWidth() {
+        if(image.size() > 0) {
+           return image[0].size();
+        } else {
+            return 0;
+        }
+    }
+};
+
+image STBIToImage(uchar* &imageIn, int &width, int &height, int &bitsPerPixel) {
+    ullong i = 0;
+    image Image;
+    std::vector<pixel> row;
+    ullong imageSize;
+    int bytesPerLine;
+
+    //See https://github.com/nothings/stb/blob/master/stb_image.h#L167
+    switch (bitsPerPixel) {
+        //Grayscale. These set all the rgb values to the same and on case two skips the alpha pixel.
+        case 1:
+            imageSize = width * height;
+            while (i <= imageSize) {
+                pixel Pixel;
+                Pixel.r = imageIn[i];
+                Pixel.g = imageIn[i];
+                Pixel.b = imageIn[i];
+
+                row.push_back(Pixel);
+
+                if(i % width == 0 && i != 0) {
+                    Image.image.push_back(row);
+                    row.clear();
+                }
+                i++;
+            }
+            break;
+
+        case 2:
+            imageSize = width * height * 2;
+            bytesPerLine = width * 2;
+            while (i < imageSize) {
+                pixel Pixel;
+                Pixel.r = imageIn[i];
+                Pixel.g = imageIn[i];
+                Pixel.b = imageIn[i];
+
+                row.push_back(Pixel);
+
+                //This skips the alpha pixel.
+                i++;
+
+                if ((i + 1) % bytesPerLine == 0 && i != 0) {
+                    Image.image.push_back(row);
+                    row.clear();
+                }
+                i++;
+            }
+            break;
+
+        case 3:
+            imageSize = width * height * 3;
+            bytesPerLine = width * 3;
+            while (i < imageSize) {
+                pixel Pixel;
+                Pixel.r = imageIn[i];
+
+                i++;
+                Pixel.g = imageIn[i];
+
+                i++;
+                Pixel.b = imageIn[i];
+
+                row.push_back(Pixel);
+
+                //Check if a row is done and then push it back into the image.
+                if ((i + 1) % bytesPerLine == 0 && i != 0) {
+                    Image.image.push_back(row);
+                    row.clear();
+                }
+                i++;
+            }
+            break;
+
+        case 4:
+            imageSize = width * height * 4;
+            bytesPerLine = width * 4;
+            while (i < imageSize) {
+                pixel Pixel;
+                Pixel.r = imageIn[i];
+
+                i++;
+                Pixel.g = imageIn[i];
+
+                i++;
+                Pixel.b = imageIn[i];
+
+                row.push_back(Pixel);
+
+                //This skips the alpha pixel.
+                i++;
+
+                //Check if a row is done and then push it back into the image.
+                if ((i + 1) % bytesPerLine == 0 && i != 0) {
+                    Image.image.push_back(row);
+                    row.clear();
+                }
+                i++;
+            }
+            break;
+
+    }
+
+    return Image;
+}
+
+uchar* ImageToSTBI (image &Image, int& width, int& height) {
+    width = Image.getWidth();
+    height = Image.getHeight();
+    uchar* stbImageArray = new uchar[Image.getHeight() * Image.getWidth() * 3];
+    int i = 0;
+    for (std::vector<pixel> vp : Image.image) {
+        for (pixel Pixel : vp) {
+            stbImageArray[i] = Pixel.r;
+
+            i++;
+            stbImageArray[i] = Pixel.g;
+
+            i++;
+            stbImageArray[i] = Pixel.b;
+
+            i++;
+        }
+    }
+    return stbImageArray;
+}
+
+struct errorPixel {
+    double r;
+    double g;
+    double b;
+};
+
+class imageWithError : public image {
+public:
+    std::vector<std::vector<errorPixel>> error;
+};
+
+//This gets the difference between two numbers in an always positive way.
+uchar getDifference(uchar one, uchar two) {
+    short minus = one - two;
+    if(minus >= 0) {
+        return minus;
+    } else {
+        return two - one;
+    }
+}
+
+//This function gets the closest usable color from a pixel.
+blockcolor getClosestColor(const pixel& Color, const std::vector<blockcolor>& blockColors, int& i, int& delta, int& tempDelta, blockcolor& bestColor) {
+    //Set this above highest value they could be with a legitimate color so one will always be chosen;
+    int colors = blockColors.size();
+
+    while (colors > i) {
+        blockcolor testColor = blockColors[i];
+        //ADD: Color discouraging here.
+        //ADD: weight to luma?
+        if(getDifference(Color.r, testColor.Color.r) + getDifference(Color.b, testColor.Color.b) + getDifference(Color.g, testColor.Color.g) < delta) {
+            bestColor = testColor;
+        }
+        i++;
+    }
+
+    /*for(blockcolor testColor : blockColors) {
+        tempDelta = getDifference(Color.r, testColor.Color.r) + getDifference(Color.b, testColor.Color.b) + getDifference(Color.g, testColor.Color.g);
+        if(tempDelta < delta) {
+            bestColor = testColor;
+            delta = tempDelta;
+        }
+    }*/
+
+    return bestColor;
+}
+
+
+int polarsReduceColors(image &Image, image &outImage, std::vector<blockcolor> &blockColors) {
+    //Figure out the error for each pixel
+    //Push that error out
+
+    std::vector<pixel> row;
+
+    color c = blockColors[0].Color;
+
+    int hight = Image.getHeight();
+    int width = Image.getWidth();
+    int ih = 0;
+    int iw = 0;
+
+    int colors = blockColors.size();
+    int i = 0;
+    int delta = 260;
+    int tempDelta;
+    blockcolor bestColor;
+
+
+    std::vector<pixel> vectorPixel;
+    pixel Pixel;
+
+    while (hight > ih) {
+        vectorPixel = Image.image[ih];
+        row.clear();
+        while(width > iw) {
+            Pixel = vectorPixel[iw];
+
+            /*i = 0;
+            delta = 260;
+            while (colors > i) {
+                blockcolor testColor = blockColors[i];
+                //ADD: Color discouraging here.
+                //ADD: weight to luma?
+                if((tempDelta = getDifference(Pixel.r, testColor.Color.r) + getDifference(Pixel.b, testColor.Color.b) + getDifference(Pixel.g, testColor.Color.g)) < delta) {
+                    delta = tempDelta;
+                    bestColor = testColor;
+                }
+                i++;
+            }
+            row.push_back(bestColor.Color);*/
+
+            row.push_back(getClosestColor(Pixel, blockColors, i, delta, tempDelta, bestColor).Color);
+
+            iw++;
+        }
+        iw = 0;
+        std::cout << ih << std::endl;
+        ih++;
+        outImage.image.push_back(row);
+    }
+
+    /*for (std::vector<pixel> vp : error.Image->image) {
+        row.clear();
+        for (pixel Pixel : vp) {
+            //asm("nop");
+            //row.push_back(c);
+            row.push_back(getClosestColor(Pixel, blockColors).Color);
+
+        }
+        outImage.image.push_back(row);
+    }*/
+
+    //writeImage(outImage, "out3.png");
+
+    //Round to the nearest color
+
 
     return -1;
 }
@@ -1142,25 +1489,60 @@ int main(int argc, char** argv) {
     /*********************************************************USER INPUT PARSING****************************************************************/
 
     //Config
-    bool noDither = false;
-    //TEST: What does this do?
+    ditherMode DitherMode = ditherMode::none;
+    stairCaseMode StairCaseMode = stairCaseMode::flat;
+    //This controls whether we randomly scatter overflows.
     bool constMaxHeight = false;
     std::string outputName = "out.png";
-    stairCaseMode StairCaseMode = flat;
+    std::string SettingsFileName = "Settings.txt";
 
-    //Input data
+    //Input image
     unsigned char* imageIn;
+    //See: https://github.com/nothings/stb/blob/master/stb_image.h#L167
+    int width, height, bitsPerPixel;
 
-    psl_helperFunctionRunner(parseArguments(argc, argv, StairCaseMode, noDither, imageIn, outputName));
+    psl_helperFunctionRunner(parseArguments(argc, argv, StairCaseMode, imageIn, outputName, DitherMode, width, height, bitsPerPixel, SettingsFileName));
 
     //ADD: Make this parse json because I can do more stuff with it.
-    psl_helperFunctionRunner(parseSettings(StairCaseMode, noDither, constMaxHeight));
+    psl_helperFunctionRunner(parseSettings(StairCaseMode, constMaxHeight, SettingsFileName));
+
+    std::vector<blockcolor> blockColors;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    psl_helperFunctionRunner(parseJSONSettings("newSettings.json", blockColors));
+    std::cout << "Time taken by parseJSONSettings: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
+
+    //ADD: Create more block colors based on staircase preference.
 
     /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
 
+    //Convert the image to my format
+    start = std::chrono::high_resolution_clock::now();
+    image Image = STBIToImage(imageIn, width, height, bitsPerPixel);
+    std::cout << "Time taken by STBIToImage: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
+
+    image processedImage;
+    start = std::chrono::high_resolution_clock::now();
+    psl_helperFunctionRunner(polarsReduceColors(Image, processedImage, blockColors));
+    std::cout << "Time taken by polarsReduceColors: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    uchar* STBIImageOut = ImageToSTBI(Image, width, height);
+    std::cout << "Time taken by ImageToSTBI: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    stbi_write_png("out4.png", width, height, 3, STBIImageOut, Image.getWidth() * 3);
+    delete[] STBIImageOut;
+    std::cout << "Time taken by stbi_write_png: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
+
+    /*start = std::chrono::high_resolution_clock::now();
+    writeImage(processedImage, "out4.png");
+    std::cout << "Time taken by writeImage: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;*/
+
+
     //FIX: Make these dynamic
-    //Image sizes?
-    const short NBT_X = 512;
+    //Litematica sizes?
+    /*const short NBT_X = 512;
     const short NBT_Y = 256;
     const short NBT_Z = 511;
     const int NBT_XZ = NBT_X * (NBT_Z + 1);
@@ -1172,27 +1554,27 @@ int main(int argc, char** argv) {
     int BLOCKS_USED_WIDTH = 0;
 
     //FIX this doesn't load.
-    psl_helperFunctionRunner(reduceColors(argv, NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, BlocksUsed, BLOCKS_USED_HEIGHT, BLOCKS_USED_WIDTH, imageIn, StairCaseMode, noDither, constMaxHeight));
+    psl_helperFunctionRunner(reduceColors(argv, NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, BlocksUsed, BLOCKS_USED_HEIGHT, BLOCKS_USED_WIDTH, imageIn, StairCaseMode, DitherMode, constMaxHeight, width, height, bitsPerPixel));
 
-    /*********************************************************Prevent height under and overflows for minecraft****************************************************************/
+    *//*********************************************************Prevent height under and overflows for minecraft****************************************************************/
 
-    std::vector<std::array<short, 3>> *Layers = new std::vector<std::array<short, 3>>[NBT_Y];
+    /*std::vector<std::array<short, 3>> *Layers = new std::vector<std::array<short, 3>>[NBT_Y];
 
     //ADD: Make an overflowed image output
-    psl_helperFunctionRunner(fixOverflow(NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, Layers))
+    psl_helperFunctionRunner(fixOverflow(NBT_X, NBT_Y, NBT_Z, NBT_XZ, BlockData, Layers))*/
 
     /*********************************************************Write out litematic****************************************************************/
     //FIX: This won't load into mc
-    psl_helperFunctionRunner(writeLitematic(NBT_X, NBT_Y, NBT_Z, NBT_XZ, Layers));
+    //psl_helperFunctionRunner(writeLitematic(NBT_X, NBT_Y, NBT_Z, NBT_XZ, Layers));
 
     /*********************************************************Clean up****************************************************************/
-	for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
+	/*for (int i = 0; i < BLOCKS_USED_HEIGHT; i++) {
 		for (int j = 0; j < BLOCKS_USED_WIDTH; j++)
 			delete[] BlocksUsed[i][j];
 		delete[] BlocksUsed[i];
 	}
 	delete[] BlocksUsed;
-    delete[] Layers;
+    delete[] Layers;*/
 
 	return 0;
 }

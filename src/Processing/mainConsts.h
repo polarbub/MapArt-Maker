@@ -74,16 +74,25 @@ bool AllowedColors[TOTAL_COLORS * 4] = { 0 };
 bool needsSupport[TOTAL_COLORS] = { 0 };
 int TotalBlocksUsed[TOTAL_COLORS + 1] = { 0 };
 
-int width, height, channels;
-
-enum stairCaseMode {
-    none = 0,
-    flat = 1,
-    staircase = 2,
-    ascending = 3,
-    descending = 4,
-    unlimited = 5
+enum struct stairCaseMode {
+    //Flat (One color. Normal)
+    flat = 0,
+    //Both ways (3 colors. Lighter, normal, and darker)
+    staircase = 1,
+    //Only going up (2 colors. lighter tint and normal)
+    ascending = 2,
+    //Only going down (2 colors. darker shade and normal)
+    descending = 3,
+    //Only can be created by messing with map.dat (3 colors. Lighter, normal, darker, and extra dark)
+    unlimited = 4
 };
+
+enum struct ditherMode {
+    none = 0,
+    Floyd_Steinberg = 1
+};
+
+
 
 int minR = 0;
 int minG = 0;
@@ -138,7 +147,5 @@ int maxB = 255;
 			<< "		     FLAT, STAIRCASE, ASCENDING, DESCENDING, UNLIMITED" << std::endl\
 			<< "		     default is FLAT" << std::endl\
 			<< "		     UNLIMITED gives access to 4th shade but can't be put into Minecraft"
-
-std::string SettingsFileName = "Settings.txt";
 
 #define SettingsFile_Generic_Error "ERROR: Incorrect syntax in " << SettingsFileName << ". "

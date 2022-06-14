@@ -17,6 +17,17 @@ In Visual Studio you can open CMakeLists.txt as a project.
 
 In CLion you can open the folder containing CMakeLists.txt.
 
+### Manual build
+```shell
+clang++ -fPIE -fPIC -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/include/psl -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/internal_include/  -std=gnu++20 -o psl.cpp.o -c /mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/src/psl.cpp -O3
+clang++ -fPIE -fPIC -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/include/psl -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/internal_include/  -std=gnu++20 -o image.cpp.o -c /mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/src/image.cpp -O3
+clang++ -fPIE -fPIC -g -shared -Wl,-soname,libPSL.so.1 -o libPSL.so.0.0.1 psl.cpp.o image.cpp.o
+
+g++ -fPIE -fPIC -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/libraries/PSL/include -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/include -I/mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/Processing -masm=intel -std=gnu++20 -o Main.cpp.o -c /mnt/saves/code/c++/Graphics/wx/MapArt-Maker/Object/src/Processing/Main.cpp -O3
+
+clang++ Main.cpp.o psl.cpp.o image.cpp.o -o CLI -O3 
+```
+
 ## TODO Comments
 CLion has a todo feature that lets me find comments starting with a configurable value. I have it set up like so;
 

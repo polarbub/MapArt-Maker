@@ -9,18 +9,26 @@ include_directories("${CMAKE_SOURCE_DIR}/src/Processing")
 #Remove header from SRC_FILES regex:
 #' src/[^\n ]*\.h'
 # Define a variable containing a list of source files for the project
+#set(SRC_FILES
+#        Main.cpp Conversion.cpp ColorSpace.cpp Comparison.cpp miniz.c nbt/nbtDriver.cpp)
 set(SRC_FILES
-        Main.cpp Conversion.cpp ColorSpace.cpp Comparison.cpp miniz.c nbt/nbtDriver.cpp)
+        Main.cpp)
 
 # Define the build target for the executable
 add_executable(${PROJECT_NAME}
         ${SRC_FILES})
 
-if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang" )
+if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #Make my compiler stop wining about silly things
-    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-comment")
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-comment -masm=intel -fPIE")
 endif()
 
+#Fix clang not building inline asm right
+if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+endif()
+
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-comment -masm=intel -fPIE")
+
 # Link libraries to the executable
-#ADD: Make libraries staticly linked
 target_link_libraries(${PROJECT_NAME} PSL)

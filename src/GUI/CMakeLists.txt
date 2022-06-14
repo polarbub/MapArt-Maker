@@ -11,6 +11,7 @@ find_package(wxWidgets 3.1 COMPONENTS core base REQUIRED)
 
 # Include the wxWidgets use file to initialize various settings
 include(${wxWidgets_USE_FILE})
+
 #Include project headers. No more ../../
 include_directories("${CMAKE_SOURCE_DIR}/src/GUI")
 

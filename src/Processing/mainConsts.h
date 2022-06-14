@@ -1,11 +1,4 @@
-//ADD: Make this dynamic
-const int TOTAL_COLORS = 61;
-const int DOWN = 0;
-const int FLAT = 1;
-const int UP = 2;
-
-//ADD: make these controllable from settings.txt
-ColorSpace::Rgb BlockColors[TOTAL_COLORS * 4] = {
+/*ColorSpace::Rgb BlockColors[61 * 4] = {
         {  89, 125,  39 }, { 109, 153,  48 }, { 127, 178,  56 }, {  67,  94,  29 }, //GRASS:					1
         { 174, 164, 115 }, { 213, 201, 140 }, { 247, 233, 163 }, { 130, 123,  86 }, //SAND:						2
         { 140, 140, 140 }, { 171, 171, 171 }, { 199, 199, 199 }, { 105, 105, 105 }, //WOOL:						3
@@ -67,14 +60,9 @@ ColorSpace::Rgb BlockColors[TOTAL_COLORS * 4] = {
         {  71,  71,  71 }, {  86,  86,  86 }, { 100, 100, 100 }, {  53,  53,  53 }, //DEEPSLATE:				59
         { 153, 123, 103 }, { 186, 150, 126 }, { 216, 175, 147 }, { 114,  92,  77 }, //RAW_IRON:					60
         {  89, 117, 105 }, { 109, 144, 129 }, { 127, 167, 150 }, {  67,  88,  79 }  //GLOW_LICHEN:				61
-};
+};*/
 
-std::string BlockTypes[TOTAL_COLORS + 1];
-bool AllowedColors[TOTAL_COLORS * 4] = { 0 };
-bool needsSupport[TOTAL_COLORS] = { 0 };
-int TotalBlocksUsed[TOTAL_COLORS + 1] = { 0 };
-
-enum struct stairCaseMode {
+enum struct StairCaseMode {
     //Flat (One color. Normal)
     flat = 0,
     //Both ways (3 colors. Lighter, normal, and darker)
@@ -87,20 +75,13 @@ enum struct stairCaseMode {
     unlimited = 4
 };
 
-enum struct ditherMode {
+enum struct DitherMode {
     none = 0,
-    Floyd_Steinberg = 1
+    Floyd_Steinberg = 1,
+    polars = 2,
 };
 
-
-
-int minR = 0;
-int minG = 0;
-int minB = 0;
-int maxR = 255;
-int maxG = 255;
-int maxB = 255;
-
+//FIX: This isn't json
 #define settings_Text "//Hello User, this is the settings file, wherein you can change the main settings for the MapArt Maker" << std::endl\
 			<< "//If you make changes to the file, be aware that if a line begins with \"//\", it will be ignored:" << std::endl\
 			<< "//The top section is the blocks that will be used for the given color ID. For info on what blocks go with what color IDs, visit this page:" << std::endl\

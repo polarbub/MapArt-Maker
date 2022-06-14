@@ -3,13 +3,20 @@ project(MapArtMaker)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-option(BUILD_GUI "Enable building the GUI" ON)
+option(BUILD_GUI "Enable building the GUI" OFF)
 option(BUILD_PROCESSING "Enable building the Processing part" ON)
 
 #set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_BUILD_TYPE "Release")
 
 if(BUILD_GUI OR BUILD_PROCESSING)
+    set(CMAKE_MAKE_PROGRAM="make -j9")
+
+    if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        #Make my compiler stop wining about silly things
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+    endif()
+
     #Include headers for PSL
     include_directories("${CMAKE_SOURCE_DIR}/src/libraries/PSL/include")
     #Include project headers
@@ -18,9 +25,6 @@ if(BUILD_GUI OR BUILD_PROCESSING)
     #Set C++ Standard
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED True)
-
-    #set(CMAKE_BUILD_TYPE Release)
-    set(CMAKE_BUILD_TYPE Debug)
 
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

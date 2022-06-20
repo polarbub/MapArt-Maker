@@ -3,7 +3,7 @@ project(MapArtMaker)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-option(BUILD_GUI "Enable building the GUI" OFF)
+option(BUILD_GUI "Enable building the GUI" ON)
 option(BUILD_PROCESSING "Enable building the Processing part" ON)
 
 #set(CMAKE_BUILD_TYPE "Debug")

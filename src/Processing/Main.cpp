@@ -11,10 +11,9 @@
 //#define DEBUG
 #include "psl/psl.h"
 #include "psl/image.h"
+#include "psl/threadDispatcher.h"
 
 #include "mainConsts.h"
-
-
 
 int parseArguments(int& argc, char** &argv, StairCaseMode &StairCaseMode, std::string &outputName, DitherMode &DitherMode, std::string &SettingsFileName, psl::Image &image) {
     std::vector<std::string> commandLineArgs = psl::argcvToStringVector(argc, argv);
@@ -119,17 +118,14 @@ int parseArguments(int& argc, char** &argv, StairCaseMode &StairCaseMode, std::s
 //#define Image psl::Image
 #define Color psl::image::Color
 
-struct BlockColor {
+struct BlockColor : public Color {
     std::string blockName;
     bool needsSupport;
-    Color color;
 };
 
-BlockColor* blockColorsArray;
-ullong blockColorsSize = 0;
-
 //ADD: Switch this to json
-int parseJSONSettings(std::string fileName, std::vector<BlockColor> &blockColors) {
+int parseJSONSettings(const std::string& fileName, ullong& blockColorsSize, BlockColor* &blockColorsArray) {
+    std::vector<BlockColor> blockColors;
     //Open the file
     std::fstream settings;
     settings.open(fileName, std::fstream::in);
@@ -156,9 +152,9 @@ int parseJSONSettings(std::string fileName, std::vector<BlockColor> &blockColors
         }
 
         BlockColor blockColor;
-        blockColor.color.r = color[0];
-        blockColor.color.g = color[1];
-        blockColor.color.b = color[2];
+        blockColor.r = color[0];
+        blockColor.g = color[1];
+        blockColor.b = color[2];
 
         Json colorMetaData = color[3];
 
@@ -184,6 +180,12 @@ int parseJSONSettings(std::string fileName, std::vector<BlockColor> &blockColors
         i++;
     }
 
+
+    if(blockColors.size() == 0) {
+        std::cout << "ERROR: Incorrect syntax in settings file. There are no colors defined" << std::endl;
+        std::cout << "HERE-> " << colors << std::endl;
+    }
+
     blockColorsSize = blockColors.size();
     blockColorsArray = new BlockColor[blockColors.size()];
     i = 0;
@@ -207,13 +209,13 @@ public:
     std::vector<std::vector<errorPixel>> error;
 };
 
-int polarsReduceColors(psl::Image &image, psl::Image &outImage, std::vector<BlockColor> &blockColors) {
+int polarsReduceColors(psl::Image &image, psl::Image &outImage, ullong blockColorsSize, BlockColor* &blockColorsArray) {
     //Figure out the error for each pixel
     //Push that error out
 
     std::vector<Pixel> row;
 
-    Color c = blockColors[0].color;
+    BlockColor c = blockColorsArray[0];
 
     int hight = image.getHeight();
     int width = image.getWidth();
@@ -242,82 +244,15 @@ int polarsReduceColors(psl::Image &image, psl::Image &outImage, std::vector<Bloc
                 BlockColor testColor = blockColorsArray[i];
                 //ADD: Color discouraging here.
                 //ADD: weight to luma? (Just square each one)
-                //I didn't feel like doing msvc inline asm so here's a c++ implementation of it.
 
-
-                #if defined(WIN_32)
-                if((tempDelta = abs(pixel.r - testColor.color.r) + abs(pixel.b - testColor.color.b) + abs(pixel.g - testColor.color.g)) < delta) {
+                if((tempDelta = abs(pixel.r - testColor.r) + abs(pixel.b - testColor.b) + abs(pixel.g - testColor.g)) < delta) {
                     delta = tempDelta;
                     bestColor = testColor;
                 }
-                #else
-                asm(
-                    //Reset some registers
-                        "xor rdx, rdx;" //Normal ones
-                        "xor r8, r8;"
 
-                        "xor rax, rax;" //Outputs
-                        "xor r9, r9;"
-                        "xor r10, r10;"
-                        "xor r11, r11;"
-
-
-                        //Get the delta for r
-                        "mov dl, [rbx];" //Put the r of the real color in dx
-                        "mov r8b, [rcx];" //Put the r of the test color in r8
-
-                        "mov r9b, dl;" //Put the real color's red (rcr) in the output (Just using as a register)
-                        "sub r9w, r8w;" // Subtract test color red (tcr) from rcr putting it in the output. r9 is really the output.
-                        "sub r8w, dx;" // Subtract rcr from tcr putting it in tcr.
-                        "cmovg r9w, r8w;" //If tcr-rcr is greater than (in this case not negative) rcr-tcr put it in the output. Rcr-tcr is already in the output.
-
-                        "xor rdx, rdx;" //Reset registers
-                        "xor r8, r8;"
-
-
-                        //Get the delta for g
-                        "mov dl, [rbx + 1];" //Load data
-                        "mov r8b, [rcx + 1];"
-
-                        "mov r10b, dl;" //Do math
-                        "sub r10w, r8w;"
-                        "sub r8w, dx;"
-                        "cmovg r10w, r8w;"
-
-                        "xor rdx, rdx;" //Reset registers
-                        "xor r8, r8;"
-
-
-                        //Get the delta for b
-                        "mov dl, [rbx + 2];"
-                        "mov r8b, [rcx + 2];"
-
-                        "mov r11b, dl;"
-                        "sub r11w, r8w;"
-                        "sub r8w, dx;"
-                        "cmovg r11w, r8w;"
-
-                        //Total deltas
-                        "add eax, r9d;"
-                        "add eax, r10d;"
-                        "add eax, r11d;"
-
-                        : "=a" ( tempDelta )
-                        : "b" ( &pixel ), "c" ( &testColor.color )
-                        : "r8", "dx", "r9", "r10", "r11"
-                        );
-
-
-                if(tempDelta < delta) {
-                    delta = tempDelta;
-                    bestColor = testColor;
-                }
-                #endif
                 i++;
             }
-            row.push_back(bestColor.color);
-
-
+            row.push_back(bestColor);
 
             iw++;
         }
@@ -352,22 +287,23 @@ int main(int argc, char** argv) {
 
     psl_helperFunctionRunner(parseArguments(argc, argv, stairCaseMode, outputName, ditherMode, settingsFileName, imageIn));
 
-    std::vector<BlockColor> blockColors;
+    BlockColor* blockColorsArray;
+    ullong blockColorsSize = 0;
 
     auto start = std::chrono::high_resolution_clock::now();
-    psl_helperFunctionRunner(parseJSONSettings("newSettings.json", blockColors));
+    psl_helperFunctionRunner(parseJSONSettings("newSettings.json", blockColorsSize, blockColorsArray));
     std::cout << "Time taken by parseJSONSettings: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
 
     //ADD: Create more block colors based on staircase preference.
 
     /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
 
-    /*psl::Image ProcessedImage;
+    psl::Image ProcessedImage;
     start = std::chrono::high_resolution_clock::now();
-    psl_helperFunctionRunner(polarsReduceColors(imageIn, ProcessedImage, blockColors));
+    psl_helperFunctionRunner(polarsReduceColors(imageIn, ProcessedImage, blockColorsSize, blockColorsArray));
     std::cout << "Time taken by polarsReduceColors: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
 
-    ProcessedImage.writeFile("out4.png");*/
+    ProcessedImage.writeFile("out4.png");
 
 	return 0;
 }

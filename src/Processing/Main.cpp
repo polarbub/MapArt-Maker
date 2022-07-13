@@ -270,10 +270,42 @@ int polarsReduceColors(psl::Image &image, psl::Image &outImage, ullong blockColo
     return -1;
 }
 
+psl::thread::threadSafePrint *stream;
+
+uint64_t threadFunction() {
+    std::cout << "child thread ID: " << std::this_thread::get_id() << std::endl;
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+
+    //stream->print(std::string("child thread ID: ") + ss.str());
+    return std::stoull(ss.str());
+}
+
 int main(int argc, char** argv) {
+    std::cout << "main thread ID: " << std::this_thread::get_id() << std::endl;
+
+    stream = new psl::thread::threadSafePrint();
+
+    psl::thread::PrioritizedThreadPool threadTest(1);
+
+    std::vector<std::future<uint64_t>> outs;
+    outs.push_back(threadTest.submit(threadFunction));
+    outs.push_back(threadTest.submit(threadFunction));
+    outs.push_back(threadTest.submit(threadFunction));
+    outs.push_back(threadTest.submit(threadFunction));
+
+    psl_sleep(1000);
+
+    for(std::future<uint64_t> &id : outs) {
+        std::cout << id.get() << std::endl;
+    }
+
+
+    delete stream;
+
     /*********************************************************USER INPUT PARSING****************************************************************/
 
-    //Config
+    /*//Config
     DitherMode ditherMode = DitherMode::none;
     StairCaseMode stairCaseMode = StairCaseMode::flat;
     //ADD: randomly scatter overflows.
@@ -298,12 +330,12 @@ int main(int argc, char** argv) {
 
     /*********************************************************COLOR REDUCTION AND DITHERING****************************************************************/
 
-    psl::Image ProcessedImage;
+    /*psl::Image ProcessedImage;
     start = std::chrono::high_resolution_clock::now();
     psl_helperFunctionRunner(polarsReduceColors(imageIn, ProcessedImage, blockColorsSize, blockColorsArray));
     std::cout << "Time taken by polarsReduceColors: " << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count() << " microseconds" << std::endl << std::endl;
 
-    ProcessedImage.writeFile("out4.png");
+    ProcessedImage.writeFile("out4.png");*/
 
 	return 0;
 }

@@ -3,7 +3,7 @@ project(MapArtMaker)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-option(BUILD_GUI "Enable building the GUI" ON)
+option(BUILD_GUI "Enable building the GUI" OFF)
 option(BUILD_PROCESSING "Enable building the Processing part" ON)
 
 #set(CMAKE_BUILD_TYPE "Debug")
@@ -13,8 +13,12 @@ if(BUILD_GUI OR BUILD_PROCESSING)
     set(CMAKE_MAKE_PROGRAM="make -j9")
 
     if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        #Make my compiler stop wining about silly things
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+        #optimization level
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
+        #warnings
+        set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-comment")
+        #Inline asm
+        set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -masm=intel -fPIE")
     endif()
 
     #Include headers for PSL

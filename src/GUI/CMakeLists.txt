@@ -30,8 +30,6 @@ set(SRC_FILES
 add_executable(${PROJECT_NAME} WIN32
         ${SRC_FILES})
 
-message(WARN "${wxWidgets_LIBRARIES}")
-
 # Link libraries to the executable
 #ADD: Make libraries staticly linked
 target_link_libraries(${PROJECT_NAME} ${wxWidgets_LIBRARIES} PSL)

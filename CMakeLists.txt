@@ -16,9 +16,9 @@ if(BUILD_GUI OR BUILD_PROCESSING)
         #optimization level
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
         #warnings
-        set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-comment")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-comment")
         #Inline asm
-        set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -masm=intel -fPIE")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -masm=intel -fPIE")
     endif()
 
     #Include headers for PSL

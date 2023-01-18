@@ -270,21 +270,33 @@ int polarsReduceColors(psl::Image &image, psl::Image &outImage, ullong blockColo
     return -1;
 }
 
-psl::thread::threadSafePrint *stream;
+psl::thread::ThreadSafePrint *threadSafePrint;
 
 uint64_t threadFunction() {
+    psl_sleep(1000);
+
     std::cout << "child thread ID: " << std::this_thread::get_id() << std::endl;
     std::stringstream ss;
     ss << std::this_thread::get_id();
 
-    //stream->print(std::string("child thread ID: ") + ss.str());
+    threadSafePrint->print(std::string("child thread ID: ") + ss.str());
+    return std::stoull(ss.str());
+}
+
+uint64_t threadFunction2() {
+    psl_sleep(500);
+    std::cout << "high prio child thread ID: " << std::this_thread::get_id() << std::endl;
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+
+    threadSafePrint->print(std::string("child thread ID: ") + ss.str());
     return std::stoull(ss.str());
 }
 
 int main(int argc, char** argv) {
     std::cout << "main thread ID: " << std::this_thread::get_id() << std::endl;
 
-    stream = new psl::thread::threadSafePrint();
+    threadSafePrint = new psl::thread::ThreadSafePrint();
 
     psl::thread::PrioritizedThreadPool threadTest(1);
 
@@ -293,15 +305,16 @@ int main(int argc, char** argv) {
     outs.push_back(threadTest.submit(threadFunction));
     outs.push_back(threadTest.submit(threadFunction));
     outs.push_back(threadTest.submit(threadFunction));
+    outs.push_back(threadTest.submitHighPriority(threadFunction2));
 
-    psl_sleep(1000);
+    psl_sleep(15000);
 
     for(std::future<uint64_t> &id : outs) {
         std::cout << id.get() << std::endl;
     }
 
 
-    delete stream;
+    delete threadSafePrint;
 
     /*********************************************************USER INPUT PARSING****************************************************************/
 
